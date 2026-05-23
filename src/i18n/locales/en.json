@@ -92,5 +92,29 @@
             "title": "All set",
             "subtitle": "Open Delify Forge to add your first site."
         }
+    },
+    "sites": {
+        "title": "Sites",
+        "subtitle": "Local projects served on .test domains.",
+        "addButton": "Add Site",
+        "emptyTitle": "No sites yet",
+        "emptySubtitle": "Add a folder to start serving it on a .test domain.",
+        "emptyAction": "Add your first site",
+        "removeAction": "Remove",
+        "domainHeader": "Domain",
+        "pathHeader": "Path",
+        "phpHeader": "PHP",
+        "actionsHeader": "Actions",
+        "dialogTitle": "Add Site",
+        "dialogDescription": "Pick a folder, name it, choose a PHP version. The site will be served at <name>.test.",
+        "folderLabel": "Folder",
+        "browse": "Browse",
+        "nameLabel": "Name (kebab-case)",
+        "phpLabel": "PHP version",
+        "phpHint": "Pick from installed bundles",
+        "phpEmpty": "No PHP installed yet — open the wizard to install one",
+        "save": "Save",
+        "cancel": "Cancel",
+        "loading": "Loading sites…"
     }
 }

@@ -92,5 +92,29 @@
             "title": "Hoàn tất",
             "subtitle": "Mở Delify Forge để thêm site đầu tiên của bạn."
         }
+    },
+    "sites": {
+        "title": "Sites",
+        "subtitle": "Các dự án local phục vụ trên tên miền .test.",
+        "addButton": "Thêm Site",
+        "emptyTitle": "Chưa có site nào",
+        "emptySubtitle": "Thêm một thư mục để phục vụ trên tên miền .test.",
+        "emptyAction": "Thêm site đầu tiên",
+        "removeAction": "Xoá",
+        "domainHeader": "Tên miền",
+        "pathHeader": "Đường dẫn",
+        "phpHeader": "PHP",
+        "actionsHeader": "Thao tác",
+        "dialogTitle": "Thêm Site",
+        "dialogDescription": "Chọn một thư mục, đặt tên, chọn phiên bản PHP. Site sẽ phục vụ tại <name>.test.",
+        "folderLabel": "Thư mục",
+        "browse": "Chọn",
+        "nameLabel": "Tên (kebab-case)",
+        "phpLabel": "Phiên bản PHP",
+        "phpHint": "Chọn từ các bundle đã cài",
+        "phpEmpty": "Chưa có PHP nào — mở wizard để cài",
+        "save": "Lưu",
+        "cancel": "Huỷ",
+        "loading": "Đang tải sites…"
     }
 }

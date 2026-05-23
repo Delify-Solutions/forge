@@ -28,6 +28,14 @@ export interface SystemReport {
     phpFpm: EngineStatus;
     ports: PortStatus[];
     resolver: { exists: boolean; correct: boolean };
+    installedPhpVersions: string[];
+    installedPhpLines: string[];
+}
+
+export interface AddSiteRequest {
+    name: string;
+    path: string;
+    phpVersion?: string;
 }
 
 export interface ProcessStatus {

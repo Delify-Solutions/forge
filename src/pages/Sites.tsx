@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { FolderOpen, Plus, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 
@@ -17,6 +18,7 @@ import { tauri } from '@/lib/tauri';
 import type { Site } from '@/types';
 
 export function Sites() {
+    const { t } = useTranslation();
     const [sites, setSites] = useState<Site[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -46,17 +48,16 @@ export function Sites() {
             setError(err instanceof Error ? err.message : 'Failed to remove.');
         }
     };
-
     return (
         <div>
             <div className="mb-6 flex items-start justify-between">
                 <PageHeader
-                    title="Sites"
-                    description="Local projects served on .test domains."
+                    title={t('sites.title')}
+                    description={t('sites.subtitle')}
                 />
                 <Button onClick={() => setDialogOpen(true)}>
                     <Plus />
-                    Add Site
+                    {t('sites.addButton')}
                 </Button>
             </div>
 
@@ -70,12 +71,12 @@ export function Sites() {
             {loading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading sites...
+                    {t('sites.loading')}
                 </div>
             ) : sites.length === 0 ? (
                 <EmptyState onAdd={() => setDialogOpen(true)} />
             ) : (
-                <SiteTable sites={sites} onRemove={onRemove} />
+                <SiteTable sites={sites} onRemove={onRemove} onRefresh={refresh} />
             )}
 
             <AddSiteDialog
@@ -88,42 +89,62 @@ export function Sites() {
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
+    const { t } = useTranslation();
     return (
         <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center">
             <FolderOpen className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-            <p className="text-sm font-medium">No sites yet</p>
+            <p className="text-sm font-medium">{t('sites.emptyTitle')}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-                Add a folder to start serving it on a .test domain.
+                {t('sites.emptySubtitle')}
             </p>
             <Button className="mt-4" onClick={onAdd}>
                 <Plus />
-                Add your first site
+                {t('sites.emptyAction')}
             </Button>
         </div>
     );
 }
-
 function SiteTable({
     sites,
     onRemove,
+    onRefresh,
 }: {
     sites: Site[];
     onRemove: (id: number) => void;
+    onRefresh: () => void;
 }) {
+    const { t } = useTranslation();
+    const [phpLines, setPhpLines] = useState<string[]>([]);
+
+    useEffect(() => {
+        tauri.scanSystem().then((r) => setPhpLines(r.installedPhpLines ?? []));
+    }, []);
+
+    const handlePhpChange = async (siteId: number, newVersion: string) => {
+        try {
+            await tauri.updateSitePhp(siteId, newVersion);
+            onRefresh();
+        } catch {
+            // silently fail — row will keep old value
+        }
+    };
+
     return (
         <div className="overflow-hidden rounded-lg border border-border bg-card">
             <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
                     <tr>
                         <th className="px-4 py-2 text-left font-medium">
-                            Domain
+                            {t('sites.domainHeader')}
                         </th>
                         <th className="px-4 py-2 text-left font-medium">
-                            Path
+                            {t('sites.pathHeader')}
                         </th>
-                        <th className="px-4 py-2 text-left font-medium">PHP</th>
+                        <th className="px-4 py-2 text-left font-medium">
+                            {t('sites.phpHeader')}
+                        </th>
                         <th className="px-4 py-2 text-right font-medium">
-                            Actions
+                            {t('sites.actionsHeader')}
                         </th>
                     </tr>
                 </thead>
@@ -147,7 +168,23 @@ function SiteTable({
                                 {site.path}
                             </td>
                             <td className="px-4 py-2.5 text-muted-foreground">
-                                {site.phpVersion}
+                                {phpLines.length > 0 ? (
+                                    <select
+                                        value={site.phpVersion}
+                                        onChange={(e) =>
+                                            handlePhpChange(site.id, e.target.value)
+                                        }
+                                        className="h-7 rounded-md border border-input bg-muted/50 px-2 text-xs"
+                                    >
+                                        {phpLines.map((line) => (
+                                            <option key={line} value={line}>
+                                                {line}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    site.phpVersion
+                                )}
                             </td>
                             <td className="px-4 py-2.5 text-right">
                                 <Button
@@ -156,7 +193,7 @@ function SiteTable({
                                     onClick={() => onRemove(site.id)}
                                 >
                                     <Trash2 />
-                                    Remove
+                                    {t('sites.removeAction')}
                                 </Button>
                             </td>
                         </tr>
@@ -166,7 +203,6 @@ function SiteTable({
         </div>
     );
 }
-
 function AddSiteDialog({
     open,
     onOpenChange,
@@ -176,14 +212,30 @@ function AddSiteDialog({
     onOpenChange: (open: boolean) => void;
     onAdded: () => void;
 }) {
+    const { t } = useTranslation();
     const [name, setName] = useState('');
     const [path, setPath] = useState('');
+    const [phpVersion, setPhpVersion] = useState('');
+    const [phpLines, setPhpLines] = useState<string[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [err, setErr] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (open) {
+            tauri.scanSystem().then((r) => {
+                const lines = r.installedPhpLines ?? [];
+                setPhpLines(lines);
+                if (lines.length > 0) {
+                    setPhpVersion((prev) => prev || lines[0]);
+                }
+            });
+        }
+    }, [open]);
 
     const reset = () => {
         setName('');
         setPath('');
+        setPhpVersion(phpLines.length > 0 ? phpLines[0] : '');
         setErr(null);
     };
 
@@ -215,7 +267,7 @@ function AddSiteDialog({
         setErr(null);
         setSubmitting(true);
         try {
-            await tauri.addSite(name, path);
+            await tauri.addSite(name, path, phpVersion || undefined);
             reset();
             onOpenChange(false);
             onAdded();
@@ -236,17 +288,16 @@ function AddSiteDialog({
         >
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Add Site</DialogTitle>
+                    <DialogTitle>{t('sites.dialogTitle')}</DialogTitle>
                     <DialogDescription>
-                        Pick a folder and pick a name. The site will be served
-                        at <code>&lt;name&gt;.test</code>.
+                        {t('sites.dialogDescription')}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-3">
                     <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">
-                            Folder
+                            {t('sites.folderLabel')}
                         </label>
                         <div className="flex gap-2">
                             <Input
@@ -260,18 +311,17 @@ function AddSiteDialog({
                                 onClick={browse}
                             >
                                 <FolderOpen />
-                                Browse
+                                {t('sites.browse')}
                             </Button>
                         </div>
                     </div>
 
                     <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">
-                            Name (kebab-case, becomes
+                            {t('sites.nameLabel')}
                             <code className="ml-1 rounded bg-muted px-1 text-[10px]">
                                 {name || 'name'}.test
                             </code>
-                            )
                         </label>
                         <Input
                             value={name}
@@ -286,19 +336,47 @@ function AddSiteDialog({
                         />
                     </div>
 
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">
+                            {t('sites.phpLabel')}
+                        </label>
+                        {phpLines.length > 0 ? (
+                            <>
+                                <select
+                                    value={phpVersion}
+                                    onChange={(e) => setPhpVersion(e.target.value)}
+                                    className="h-9 w-full rounded-md border border-input bg-muted/50 px-3 text-sm"
+                                >
+                                    {phpLines.map((line) => (
+                                        <option key={line} value={line}>
+                                            {line}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-muted-foreground">
+                                    {t('sites.phpHint')}
+                                </p>
+                            </>
+                        ) : (
+                            <p className="text-xs text-muted-foreground">
+                                {t('sites.phpEmpty')}
+                            </p>
+                        )}
+                    </div>
+
                     {err && <p className="text-xs text-destructive">{err}</p>}
                 </div>
 
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>
-                        Cancel
+                        {t('sites.cancel')}
                     </Button>
                     <Button
                         onClick={submit}
-                        disabled={submitting || !name || !path}
+                        disabled={submitting || !name || !path || phpLines.length === 0}
                     >
                         {submitting && <Loader2 className="animate-spin" />}
-                        Save
+                        {t('sites.save')}
                     </Button>
                 </DialogFooter>
             </DialogContent>
