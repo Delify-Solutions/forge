@@ -51,37 +51,80 @@ pub async fn ping() -> ForgeResult<String> {
     Ok("pong".to_string())
 }
 
+#[cfg(target_os = "macos")]
 #[tauri::command]
 pub async fn scan_system() -> ForgeResult<SystemReport> {
-    // Real detection lands in Bước 6. For now, return an empty skeleton so
-    // the frontend can wire up the wizard against a deterministic shape.
-    Ok(SystemReport {
-        homebrew: HomebrewStatus {
-            installed: false,
-            prefix: None,
-        },
-        nginx: EngineStatus {
-            found: false,
-            binary: None,
-            version: None,
-            source: None,
-        },
-        php: EngineStatus {
-            found: false,
-            binary: None,
-            version: None,
-            source: None,
-        },
-        php_fpm: EngineStatus {
-            found: false,
-            binary: None,
-            version: None,
-            source: None,
-        },
-        ports: Vec::new(),
-        resolver: ResolverStatus {
-            exists: false,
-            correct: false,
-        },
+    use crate::platform::macos as plat;
+
+    let scan = tokio::task::spawn_blocking(|| {
+        let prefix = plat::brew_prefix();
+        let homebrew = HomebrewStatus {
+            installed: prefix.is_some(),
+            prefix: prefix.as_ref().map(|p| p.to_string_lossy().to_string()),
+        };
+
+        let nginx = engine(plat::detect_binary("nginx", &["-v"]));
+        let php = engine(plat::detect_binary("php", &["--version"]));
+        let php_fpm = engine(plat::detect_binary("php-fpm", &["--version"]));
+
+        let ports = [80u16, 443, 5353]
+            .into_iter()
+            .map(|port| {
+                let in_use = plat::port_in_use(port);
+                PortStatus {
+                    port,
+                    in_use,
+                    used_by: if in_use {
+                        plat::process_using_port(port)
+                    } else {
+                        None
+                    },
+                }
+            })
+            .collect();
+
+        let resolver = ResolverStatus {
+            exists: plat::resolver_exists(),
+            correct: plat::resolver_correct(),
+        };
+
+        SystemReport {
+            homebrew,
+            nginx,
+            php,
+            php_fpm,
+            ports,
+            resolver,
+        }
     })
+    .await
+    .map_err(|e| crate::error::ForgeError::Other(e.to_string()))?;
+
+    Ok(scan)
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub async fn scan_system() -> ForgeResult<SystemReport> {
+    Err(crate::error::ForgeError::NotImplemented(
+        "scan_system is only implemented for macOS in MVP",
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn engine(detected: Option<crate::platform::macos::DetectedBinary>) -> EngineStatus {
+    match detected {
+        Some(d) => EngineStatus {
+            found: true,
+            binary: Some(d.binary.to_string_lossy().to_string()),
+            version: d.version,
+            source: Some(d.source),
+        },
+        None => EngineStatus {
+            found: false,
+            binary: None,
+            version: None,
+            source: None,
+        },
+    }
 }

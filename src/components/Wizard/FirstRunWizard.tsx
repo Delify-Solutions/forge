@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     CheckCircle2,
     XCircle,
@@ -6,6 +6,7 @@ import {
     Loader2,
     ArrowRight,
     ArrowLeft,
+    RefreshCw,
 } from 'lucide-react';
 
 import {
@@ -18,6 +19,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { tauri } from '@/lib/tauri';
+import type { SystemReport } from '@/types';
 
 type Step = 'welcome' | 'scan' | 'choose' | 'conflicts' | 'dns' | 'done';
 
@@ -36,19 +39,64 @@ type ScanRow = {
     detail: string;
 };
 
-const MOCK_SCAN: ScanRow[] = [
-    { label: 'Homebrew', status: 'ok', detail: '/opt/homebrew' },
-    {
-        label: 'Nginx',
-        status: 'ok',
-        detail: '1.27.3 · /opt/homebrew/bin/nginx',
-    },
-    { label: 'PHP', status: 'ok', detail: '8.3.14 · /opt/homebrew/bin/php' },
-    { label: 'PHP-FPM', status: 'ok', detail: '/opt/homebrew/sbin/php-fpm' },
-    { label: 'Port 80', status: 'warn', detail: 'In use by httpd (Apache)' },
-    { label: 'Port 5353 (dnsmasq)', status: 'ok', detail: 'Available' },
-    { label: '/etc/resolver/test', status: 'error', detail: 'Not present' },
-];
+function buildScanRows(report: SystemReport): ScanRow[] {
+    const rows: ScanRow[] = [];
+
+    rows.push({
+        label: 'Homebrew',
+        status: report.homebrew.installed ? 'ok' : 'error',
+        detail: report.homebrew.installed
+            ? (report.homebrew.prefix ?? 'detected')
+            : 'Not detected — install from https://brew.sh',
+    });
+
+    for (const key of ['nginx', 'php', 'phpFpm'] as const) {
+        const engine = report[key];
+        const label =
+            key === 'phpFpm'
+                ? 'PHP-FPM'
+                : key.charAt(0).toUpperCase() + key.slice(1);
+        rows.push({
+            label,
+            status: engine.found ? 'ok' : 'error',
+            detail: engine.found
+                ? `${engine.version ?? 'unknown'} · ${engine.binary ?? ''}`
+                : `Not found — run: brew install ${
+                      key === 'phpFpm' ? 'php' : key
+                  }`,
+        });
+    }
+
+    for (const port of report.ports) {
+        rows.push({
+            label: `Port ${port.port}`,
+            status: port.inUse ? 'warn' : 'ok',
+            detail: port.inUse
+                ? `In use${port.usedBy ? ` by ${port.usedBy}` : ''}`
+                : 'Available',
+        });
+    }
+
+    let resolverStatus: ScanRow['status'];
+    let resolverDetail: string;
+    if (!report.resolver.exists) {
+        resolverStatus = 'error';
+        resolverDetail = 'Not present';
+    } else if (report.resolver.correct) {
+        resolverStatus = 'ok';
+        resolverDetail = 'Correct';
+    } else {
+        resolverStatus = 'warn';
+        resolverDetail = 'Exists but content does not match';
+    }
+    rows.push({
+        label: '/etc/resolver/test',
+        status: resolverStatus,
+        detail: resolverDetail,
+    });
+
+    return rows;
+}
 
 interface FirstRunWizardProps {
     open: boolean;
@@ -57,12 +105,35 @@ interface FirstRunWizardProps {
 
 export function FirstRunWizard({ open, onComplete }: FirstRunWizardProps) {
     const [stepIndex, setStepIndex] = useState(0);
+    const [report, setReport] = useState<SystemReport | null>(null);
+    const [scanError, setScanError] = useState<string | null>(null);
+    const [scanning, setScanning] = useState(false);
     const step = STEPS[stepIndex].id;
     const canGoBack = stepIndex > 0 && step !== 'done';
 
     const next = () => setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
     const back = () => setStepIndex((i) => Math.max(i - 1, 0));
     const finish = () => onComplete();
+
+    const runScan = async () => {
+        setScanning(true);
+        setScanError(null);
+        try {
+            const result = await tauri.scanSystem();
+            setReport(result);
+        } catch (err) {
+            setScanError(err instanceof Error ? err.message : 'Scan failed.');
+        } finally {
+            setScanning(false);
+        }
+    };
+
+    useEffect(() => {
+        if (open && step === 'scan' && !report && !scanning) {
+            void runScan();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, step]);
 
     return (
         <Dialog open={open}>
@@ -84,9 +155,16 @@ export function FirstRunWizard({ open, onComplete }: FirstRunWizardProps) {
 
                 <div className="min-h-[260px] py-2">
                     {step === 'welcome' && <WelcomeStep />}
-                    {step === 'scan' && <ScanStep />}
+                    {step === 'scan' && (
+                        <ScanStep
+                            scanning={scanning}
+                            report={report}
+                            error={scanError}
+                            onRescan={runScan}
+                        />
+                    )}
                     {step === 'choose' && <ChooseStep />}
-                    {step === 'conflicts' && <ConflictsStep />}
+                    {step === 'conflicts' && <ConflictsStep report={report} />}
                     {step === 'dns' && <DnsStep />}
                     {step === 'done' && <DoneStep />}
                 </div>
@@ -173,29 +251,71 @@ function WelcomeStep() {
     );
 }
 
-function ScanStep() {
+function ScanStep({
+    scanning,
+    report,
+    error,
+    onRescan,
+}: {
+    scanning: boolean;
+    report: SystemReport | null;
+    error: string | null;
+    onRescan: () => void;
+}) {
     return (
-        <div className="space-y-1.5 text-sm">
-            <p className="mb-3 text-muted-foreground">
-                Scanning your system (mocked data — wired to the real{' '}
-                <code>scan_system</code> Tauri command in Bước 6).
-            </p>
-            <ul className="space-y-1.5">
-                {MOCK_SCAN.map((row) => (
-                    <li
-                        key={row.label}
-                        className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2"
-                    >
-                        <span className="flex items-center gap-2">
-                            <StatusIcon status={row.status} />
-                            <span className="font-medium">{row.label}</span>
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                            {row.detail}
-                        </span>
-                    </li>
-                ))}
-            </ul>
+        <div className="space-y-2 text-sm">
+            <div className="mb-3 flex items-center justify-between">
+                <p className="text-muted-foreground">
+                    Detecting Homebrew, Nginx, PHP, and port availability.
+                </p>
+                <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={onRescan}
+                    disabled={scanning}
+                >
+                    <RefreshCw className={cn(scanning && 'animate-spin')} />
+                    Rescan
+                </Button>
+            </div>
+
+            {scanning && !report && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Scanning system...
+                </div>
+            )}
+
+            {error && (
+                <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5">
+                    <XCircle className="mt-0.5 h-4 w-4 text-destructive" />
+                    <div className="flex-1">
+                        <p className="font-medium">Scan failed</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {error}
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {report && (
+                <ul className="space-y-1.5">
+                    {buildScanRows(report).map((row) => (
+                        <li
+                            key={row.label}
+                            className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2"
+                        >
+                            <span className="flex items-center gap-2">
+                                <StatusIcon status={row.status} />
+                                <span className="font-medium">{row.label}</span>
+                            </span>
+                            <span className="ml-3 text-right text-xs text-muted-foreground">
+                                {row.detail}
+                            </span>
+                        </li>
+                    ))}
+                </ul>
+            )}
         </div>
     );
 }
@@ -232,36 +352,46 @@ function ChooseStep() {
     );
 }
 
-function ConflictsStep() {
+function ConflictsStep({ report }: { report: SystemReport | null }) {
+    const conflicts = report?.ports.filter((p) => p.inUse) ?? [];
+
+    if (!report) {
+        return (
+            <p className="text-sm text-muted-foreground">
+                Run the system scan first.
+            </p>
+        );
+    }
+
+    if (conflicts.length === 0) {
+        return (
+            <div className="flex items-center gap-2 text-sm">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                No port conflicts detected.
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-3 text-sm">
-            <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5">
-                <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
-                <div className="flex-1">
-                    <p className="font-medium">
-                        Port 80 is in use by{' '}
-                        <code className="rounded bg-muted px-1 text-xs">
-                            httpd
-                        </code>{' '}
-                        (Apache)
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                        Nginx will not be able to bind. Stop the offending
-                        process before continuing.
-                    </p>
-                    <div className="mt-2 flex gap-2">
-                        <Button size="sm" variant="outline" disabled>
-                            Stop Apache (Bước 6)
-                        </Button>
-                        <Button size="sm" variant="ghost" disabled>
-                            Use port 8080 instead
-                        </Button>
+            {conflicts.map((c) => (
+                <div
+                    key={c.port}
+                    className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5"
+                >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+                    <div className="flex-1">
+                        <p className="font-medium">
+                            Port {c.port} is in use
+                            {c.usedBy ? ` by ${c.usedBy}` : ''}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Stop the offending process before continuing, or
+                            choose an alternative port.
+                        </p>
                     </div>
                 </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-                No conflicts detected on port 5353 or 443.
-            </p>
+            ))}
         </div>
     );
 }

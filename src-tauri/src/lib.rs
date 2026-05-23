@@ -4,7 +4,6 @@
 
 mod commands;
 mod error;
-#[allow(dead_code)]
 mod platform;
 
 use tracing_subscriber::EnvFilter;
