@@ -55,6 +55,7 @@ pub fn run() {
             commands::sites::list_sites,
             commands::sites::add_site,
             commands::sites::remove_site,
+            commands::sites::update_site_php,
             commands::wizard::setup_dns_resolver,
             commands::wizard::start_dnsmasq,
             commands::wizard::stop_dnsmasq,

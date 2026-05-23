@@ -57,8 +57,35 @@ fn site_config_path(name: &str) -> PathBuf {
     sites_dir().join(format!("{name}.conf"))
 }
 
-fn php_socket_path() -> PathBuf {
-    crate::domain::php::socket_path()
+fn php_socket_for(php_version: &str) -> PathBuf {
+    let lines = crate::domain::php::installed_lines();
+
+    // Determine which line to use.
+    let chosen = if php_version.is_empty() || php_version == "system" {
+        // Fall back to highest installed line.
+        lines.last().cloned()
+    } else {
+        // Extract major.minor from the requested version (handles both "8.3" and "8.3.14").
+        let parts: Vec<&str> = php_version.split('.').collect();
+        let requested_line = if parts.len() >= 2 {
+            format!("{}.{}", parts[0], parts[1])
+        } else {
+            php_version.to_string()
+        };
+
+        if lines.contains(&requested_line) {
+            Some(requested_line)
+        } else {
+            // Requested line not installed — fall back to highest.
+            lines.last().cloned()
+        }
+    };
+
+    match chosen {
+        Some(line) => crate::domain::php::socket_path(&line),
+        // No installed lines at all — use a "system" socket as last resort.
+        None => crate::domain::php::socket_path("system"),
+    }
 }
 
 fn nginx_prefix(binary: &std::path::Path) -> PathBuf {
@@ -103,10 +130,10 @@ pub async fn regenerate(pool: &SqlitePool) -> ForgeResult<()> {
     let tera = build_tera()?;
     let sites = sites::list(pool).await?;
 
-    let php_socket = php_socket_path();
-
     // Per-site configs.
     for site in &sites {
+        let php_socket = php_socket_for(&site.php_version);
+
         let mut ctx = Context::new();
         ctx.insert("site", &SiteCtx::from(site.clone()));
         ctx.insert("logs_dir", &logs_dir().to_string_lossy().to_string());

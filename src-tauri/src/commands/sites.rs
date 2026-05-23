@@ -26,6 +26,17 @@ pub async fn remove_site(state: State<'_, AppState>, id: i64) -> ForgeResult<()>
     Ok(())
 }
 
+#[tauri::command]
+pub async fn update_site_php(
+    state: State<'_, AppState>,
+    id: i64,
+    php_version: String,
+) -> ForgeResult<Site> {
+    let site = sites::update_php_version(&state.pool, id, &php_version).await?;
+    let _ = try_reload(&state.pool, &state.supervisor).await;
+    Ok(site)
+}
+
 async fn try_reload(pool: &sqlx::SqlitePool, supervisor: &ProcessSupervisor) -> ForgeResult<()> {
     let status = supervisor.status(nginx::NGINX_PROCESS).await;
     if matches!(status.state, crate::domain::process::ProcessState::Running) {

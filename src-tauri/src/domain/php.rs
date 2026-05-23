@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// PHP-FPM lifecycle. MVP exposes a single 'system' pool — multi-version
-// support arrives in V0.2 (per-PHP-version pool sharing the same Tera
-// template).
+// PHP-FPM lifecycle. Multi-version support: one php-fpm master process
+// manages multiple pools (one per installed PHP major.minor line), each
+// listening on its own Unix socket.
 
 use std::path::PathBuf;
 
+use serde::Serialize;
 use tera::{Context, Tera};
 
+use crate::domain::bundle;
 use crate::domain::process::{ProcessSpec, ProcessSupervisor};
 use crate::error::{ForgeError, ForgeResult};
 use crate::platform::macos as plat;
@@ -27,8 +29,14 @@ fn config_path() -> PathBuf {
     runtime_dir().join("php-fpm.conf")
 }
 
-pub fn socket_path() -> PathBuf {
-    runtime_dir().join("system.sock")
+/// Socket path for a given PHP major.minor line (e.g. "8.3" -> "<runtime>/8.3.sock").
+pub fn socket_path(line: &str) -> PathBuf {
+    runtime_dir().join(format!("{line}.sock"))
+}
+
+/// Return all installed PHP major.minor lines (delegates to bundle catalog).
+pub fn installed_lines() -> Vec<String> {
+    bundle::installed_php_lines()
 }
 
 fn ensure_dirs() -> ForgeResult<()> {
@@ -45,7 +53,15 @@ fn current_user() -> String {
         .unwrap_or_else(|_| "_www".to_string())
 }
 
-pub fn render_config() -> ForgeResult<PathBuf> {
+#[derive(Serialize)]
+struct PoolCtx {
+    name: String,
+    socket: String,
+}
+
+/// Render a php-fpm.conf covering all installed PHP lines. Each line gets
+/// its own `[php-<line>]` pool section with a dedicated socket.
+pub fn render_config(lines: &[String]) -> ForgeResult<PathBuf> {
     ensure_dirs()?;
 
     let mut tera = Tera::default();
@@ -55,11 +71,19 @@ pub fn render_config() -> ForgeResult<PathBuf> {
     )
     .map_err(|e| ForgeError::Other(format!("tera load: {e}")))?;
 
+    let pools: Vec<PoolCtx> = lines
+        .iter()
+        .map(|line| PoolCtx {
+            name: line.clone(),
+            socket: socket_path(line).to_string_lossy().to_string(),
+        })
+        .collect();
+
     let mut ctx = Context::new();
     ctx.insert("runtime_dir", &runtime_dir().to_string_lossy().to_string());
     ctx.insert("logs_dir", &logs_dir().to_string_lossy().to_string());
-    ctx.insert("socket_path", &socket_path().to_string_lossy().to_string());
     ctx.insert("user", &current_user());
+    ctx.insert("pools", &pools);
 
     let rendered = tera
         .render("php-fpm.conf.tera", &ctx)
@@ -75,10 +99,21 @@ pub async fn start(supervisor: &ProcessSupervisor) -> ForgeResult<u32> {
         ForgeError::Other("php-fpm not found — install with: brew install php".into())
     })?;
 
-    let config = render_config()?;
+    let lines = installed_lines();
+    let effective_lines = if lines.is_empty() {
+        // Fallback: if no bundle is installed but system php-fpm exists,
+        // create a single "system" pool so existing behavior is preserved.
+        vec!["system".to_string()]
+    } else {
+        lines
+    };
 
-    // Best-effort: remove a stale socket before spawn.
-    let _ = std::fs::remove_file(socket_path());
+    let config = render_config(&effective_lines)?;
+
+    // Best-effort: remove stale sockets before spawn.
+    for line in &effective_lines {
+        let _ = std::fs::remove_file(socket_path(line));
+    }
 
     let spec = ProcessSpec {
         name: PHP_FPM_PROCESS.to_string(),

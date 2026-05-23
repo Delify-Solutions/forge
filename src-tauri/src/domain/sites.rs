@@ -22,6 +22,7 @@ pub struct Site {
 pub struct AddSiteRequest {
     pub name: String,
     pub path: String,
+    pub php_version: Option<String>,
 }
 
 fn validate_name(name: &str) -> ForgeResult<()> {
@@ -80,9 +81,10 @@ pub async fn add(pool: &SqlitePool, req: AddSiteRequest) -> ForgeResult<Site> {
         )));
     }
 
-    let result = sqlx::query("INSERT INTO sites (name, path) VALUES (?, ?)")
+    let result = sqlx::query("INSERT INTO sites (name, path, php_version) VALUES (?, ?, ?)")
         .bind(&req.name)
         .bind(&req.path)
+        .bind(req.php_version.as_deref().unwrap_or("8.3"))
         .execute(pool)
         .await
         .map_err(|e| match e {
@@ -126,6 +128,63 @@ pub async fn remove(pool: &SqlitePool, id: i64) -> ForgeResult<()> {
     Ok(())
 }
 
+/// Validate that a php_version string matches `<major>.<minor>` or `<major>.<minor>.<patch>`.
+fn validate_php_version(v: &str) -> ForgeResult<()> {
+    let parts: Vec<&str> = v.split('.').collect();
+    let valid = match parts.len() {
+        2 => parts
+            .iter()
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())),
+        3 => parts
+            .iter()
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())),
+        _ => false,
+    };
+    if !valid {
+        return Err(ForgeError::Other(format!(
+            "invalid php_version '{v}': must be <major>.<minor> or <major>.<minor>.<patch> (e.g. 8.3 or 8.3.14)"
+        )));
+    }
+    Ok(())
+}
+
+pub async fn update_php_version(
+    pool: &SqlitePool,
+    id: i64,
+    php_version: &str,
+) -> ForgeResult<Site> {
+    validate_php_version(php_version)?;
+
+    let result = sqlx::query("UPDATE sites SET php_version = ? WHERE id = ?")
+        .bind(php_version)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| ForgeError::Other(format!("update php_version: {e}")))?;
+
+    if result.rows_affected() == 0 {
+        return Err(ForgeError::Other(format!("site {id} not found")));
+    }
+
+    let row = sqlx::query_as::<_, (i64, String, String, String, String, String)>(
+        "SELECT id, name, path, php_version, web_server, created_at FROM sites WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| ForgeError::Other(format!("fetch updated site: {e}")))?;
+
+    Ok(Site {
+        domain: format!("{}.test", row.1),
+        id: row.0,
+        name: row.1,
+        path: row.2,
+        php_version: row.3,
+        web_server: row.4,
+        created_at: row.5,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +207,26 @@ mod tests {
         assert!(validate_name("space app").is_err());
         let long = "a".repeat(64);
         assert!(validate_name(&long).is_err());
+    }
+
+    #[test]
+    fn accepts_valid_php_versions() {
+        assert!(validate_php_version("8.2").is_ok());
+        assert!(validate_php_version("8.3").is_ok());
+        assert!(validate_php_version("8.3.14").is_ok());
+        assert!(validate_php_version("7.4").is_ok());
+        assert!(validate_php_version("8.4.21").is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_php_versions() {
+        assert!(validate_php_version("system").is_err());
+        assert!(validate_php_version("8").is_err());
+        assert!(validate_php_version("8.x").is_err());
+        assert!(validate_php_version("8.3.14.5").is_err());
+        assert!(validate_php_version("abc").is_err());
+        assert!(validate_php_version("").is_err());
+        assert!(validate_php_version(".3").is_err());
+        assert!(validate_php_version("8.").is_err());
     }
 }

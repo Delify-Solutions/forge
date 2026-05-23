@@ -125,6 +125,10 @@ pub fn catalog() -> Vec<BundleEntry> {
                 _ => None,
             },
         ),
+        ("php", "8.2.31", "PHP 8.2.31", "bin/php", {
+            // CI hasn't published yet — sha256 will be pinned by a follow-up commit.
+            None
+        }),
         ("php", "8.3.14", "PHP 8.3.14", "bin/php", {
             // Published 2026-05-23 from forge-engines tag php-8.3.14 via
             // static-php-cli 2.8.5 (CLI + FPM in one archive).
@@ -134,6 +138,10 @@ pub fn catalog() -> Vec<BundleEntry> {
                 }
                 _ => None,
             }
+        }),
+        ("php", "8.4.21", "PHP 8.4.21", "bin/php", {
+            // CI hasn't published yet — sha256 will be pinned by a follow-up commit.
+            None
         }),
         (
             "dnsmasq",
@@ -347,6 +355,33 @@ fn drop_first_level_if_single(dest: &Path) -> ForgeResult<()> {
     }
     let _ = std::fs::remove_dir(&inner);
     Ok(())
+}
+
+/// Return all PHP `<major>.<minor>` lines that have an installed bundle
+/// (e.g. ["8.2", "8.3", "8.4"]). Used by the wizard scan + site editor
+/// to populate a version picker. Returns empty vec if none installed.
+pub fn installed_php_lines() -> Vec<String> {
+    let mut lines = std::collections::BTreeSet::new();
+    for entry in catalog()
+        .into_iter()
+        .filter(|e| e.engine == "php" && e.installed)
+    {
+        let parts: Vec<&str> = entry.version.split('.').collect();
+        if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            lines.insert(format!("{}.{}", parts[0], parts[1]));
+        }
+    }
+    lines.into_iter().collect()
+}
+
+/// Return all installed PHP full versions (e.g. ["8.2.31", "8.3.14"]).
+/// Used by the system report to show the catalog table.
+pub fn installed_php_versions() -> Vec<String> {
+    catalog()
+        .into_iter()
+        .filter(|e| e.engine == "php" && e.installed)
+        .map(|e| e.version)
+        .collect()
 }
 
 pub fn uninstall_bundle(engine: &str, version: &str) -> ForgeResult<()> {

@@ -44,6 +44,8 @@ pub struct SystemReport {
     pub php_fpm: EngineStatus,
     pub ports: Vec<PortStatus>,
     pub resolver: ResolverStatus,
+    pub installed_php_versions: Vec<String>,
+    pub installed_php_lines: Vec<String>,
 }
 
 #[tauri::command]
@@ -54,6 +56,7 @@ pub async fn ping() -> ForgeResult<String> {
 #[cfg(target_os = "macos")]
 #[tauri::command]
 pub async fn scan_system() -> ForgeResult<SystemReport> {
+    use crate::domain::bundle;
     use crate::platform::macos as plat;
 
     let scan = tokio::task::spawn_blocking(|| {
@@ -88,6 +91,9 @@ pub async fn scan_system() -> ForgeResult<SystemReport> {
             correct: plat::resolver_correct(),
         };
 
+        let installed_php_versions = bundle::installed_php_versions();
+        let installed_php_lines = bundle::installed_php_lines();
+
         SystemReport {
             homebrew,
             nginx,
@@ -95,6 +101,8 @@ pub async fn scan_system() -> ForgeResult<SystemReport> {
             php_fpm,
             ports,
             resolver,
+            installed_php_versions,
+            installed_php_lines,
         }
     })
     .await
