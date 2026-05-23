@@ -64,6 +64,9 @@ pub fn run() {
             commands::wizard::start_php_fpm,
             commands::wizard::stop_php_fpm,
             commands::wizard::services_status,
+            commands::bundles::list_bundles,
+            commands::bundles::install_bundle,
+            commands::bundles::uninstall_bundle,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

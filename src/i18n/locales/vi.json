@@ -1,0 +1,96 @@
+{
+    "common": {
+        "back": "Quay lại",
+        "continue": "Tiếp tục",
+        "cancel": "Huỷ",
+        "rescan": "Quét lại",
+        "install": "Cài đặt",
+        "installing": "Đang cài…",
+        "installed": "Đã cài",
+        "open": "Mở Delify Forge",
+        "loading": "Đang tải…",
+        "language": "Ngôn ngữ"
+    },
+    "wizard": {
+        "title": "Chào mừng đến với Delify Forge",
+        "subtitle": "Cùng chuẩn bị máy của bạn trong vài phút.",
+        "steps": {
+            "welcome": "Chào mừng",
+            "scan": "Quét hệ thống",
+            "choose": "Chọn nguồn",
+            "conflicts": "Xử lý xung đột",
+            "dns": "Cài đặt DNS",
+            "done": "Hoàn tất"
+        },
+        "welcome": {
+            "intro": "Delify Forge phục vụ các dự án PHP, Node và web khác của bạn trên các tên miền *.test thân thiện.",
+            "actions": "Trình hướng dẫn sẽ:",
+            "scanItem": "Quét máy để tìm nginx, PHP và dnsmasq.",
+            "pickItem": "Giúp bạn chọn nguồn nhị phân cho từng engine.",
+            "conflictItem": "Xử lý xung đột cổng 80 và 5353 (nếu có).",
+            "adminItem": "Hỏi quyền admin một lần để định tuyến .test về 127.0.0.1.",
+            "languagePrompt": "Chọn ngôn ngữ để bắt đầu:"
+        },
+        "scan": {
+            "intro": "Đang phát hiện Homebrew, Nginx, PHP và tình trạng cổng.",
+            "scanning": "Đang quét hệ thống…",
+            "failedTitle": "Quét thất bại",
+            "labels": {
+                "homebrew": "Homebrew",
+                "nginx": "Nginx",
+                "php": "PHP",
+                "phpFpm": "PHP-FPM",
+                "port": "Cổng {{port}}",
+                "resolver": "/etc/resolver/test"
+            },
+            "details": {
+                "homebrewOk": "đã phát hiện tại {{prefix}}",
+                "homebrewMissing": "Chưa phát hiện — cài từ https://brew.sh",
+                "engineOk": "{{version}}",
+                "engineMissing": "Chưa cài đặt",
+                "portInUse": "Đang dùng",
+                "portInUseBy": "Đang dùng bởi {{name}}",
+                "portFree": "Sẵn sàng",
+                "resolverOk": "Đúng",
+                "resolverMissing": "Chưa có",
+                "resolverWrong": "Đã có nhưng nội dung không khớp"
+            },
+            "actions": {
+                "install": "Cài đặt"
+            },
+            "progress": {
+                "started": "Đang chuẩn bị…",
+                "downloading": "Đang tải {{percent}}%",
+                "verifying": "Đang xác thực checksum…",
+                "extracting": "Đang giải nén…",
+                "failed": "Cài đặt thất bại"
+            }
+        },
+        "choose": {
+            "intro": "Với mỗi engine, chọn nguồn nhị phân Forge sẽ dùng. Bản Forge bundle sẽ tự tải tệp nén dựng sẵn về máy.",
+            "options": {
+                "forge": "Forge bundle (khuyên dùng)",
+                "brew": "Homebrew",
+                "path": "Nhị phân trên PATH"
+            }
+        },
+        "conflicts": {
+            "noneTitle": "Không phát hiện xung đột cổng.",
+            "portTitle": "Cổng {{port}} đang được dùng",
+            "portTitleBy": "Cổng {{port}} đang được dùng bởi {{name}}",
+            "portHint": "Dừng tiến trình đang chiếm cổng trước khi tiếp tục, hoặc chọn cổng khác."
+        },
+        "dns": {
+            "intro": "Forge cần ghi /etc/resolver/test để macOS định tuyến tên miền *.test về 127.0.0.1. Bước này yêu cầu quyền admin.",
+            "note": "macOS sẽ hiển thị hộp thoại nhập mật khẩu hệ thống. Forge không lưu mật khẩu — chỉ dùng một lần. dnsmasq, PHP-FPM và Nginx sẽ tự khởi chạy sau đó.",
+            "doneTitle": "Đã cài resolver và khởi động engines.",
+            "action": "Cài DNS ngay",
+            "running": "Đang cài…",
+            "failed": "Cài đặt thất bại."
+        },
+        "done": {
+            "title": "Hoàn tất",
+            "subtitle": "Mở Delify Forge để thêm site đầu tiên của bạn."
+        }
+    }
+}

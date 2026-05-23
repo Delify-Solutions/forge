@@ -18,7 +18,7 @@ export interface EngineStatus {
     found: boolean;
     binary?: string;
     version?: string;
-    source?: 'brew' | 'system' | 'mise';
+    source?: 'brew' | 'system' | 'mise' | 'forge';
 }
 
 export interface SystemReport {
@@ -35,3 +35,23 @@ export interface ProcessStatus {
     state: 'stopped' | 'running' | 'crashed';
     pid?: number;
 }
+
+export interface BundleEntry {
+    engine: string;
+    version: string;
+    displayName: string;
+    url: string;
+    sha256?: string;
+    sizeBytes?: number;
+    binSubpath: string;
+    installed: boolean;
+    installPath?: string;
+}
+
+export type InstallProgress =
+    | { kind: 'started'; totalBytes?: number }
+    | { kind: 'downloading'; downloaded: number; total?: number }
+    | { kind: 'verifying' }
+    | { kind: 'extracting' }
+    | { kind: 'done'; installPath: string }
+    | { kind: 'failed'; message: string };

@@ -29,6 +29,12 @@ directories-next = "2"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate", "chrono"] }
 chrono = { version = "0.4", features = ["serde"] }
 tera = { version = "1.20", default-features = false }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+sha2 = "0.10"
+flate2 = "1.0"
+tar = "0.4"
+hex = "0.4"
 
 [profile.release]
 panic = "abort"

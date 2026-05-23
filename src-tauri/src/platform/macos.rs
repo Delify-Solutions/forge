@@ -48,6 +48,33 @@ pub fn detect_binary(name: &str, version_args: &[&str]) -> Option<DetectedBinary
     let prefix = brew_prefix();
 
     let mut candidates: Vec<(PathBuf, &'static str)> = Vec::new();
+
+    // Highest priority: bundles Forge has installed itself. We probe every
+    // installed version of the engine so a user with multiple PHPs lined up
+    // still gets a deterministic answer (newest version wins, by lexical
+    // sort of pinned x.y.z strings).
+    let bundle_engine = match name {
+        "php-fpm" => Some("php-fpm"),
+        "nginx" | "php" | "dnsmasq" => Some(name),
+        _ => None,
+    };
+    if let Some(engine) = bundle_engine {
+        let entries = crate::domain::bundle::catalog();
+        let mut bundle_candidates: Vec<(String, PathBuf)> = entries
+            .into_iter()
+            .filter(|e| e.engine == engine)
+            .filter_map(|e| {
+                let path =
+                    crate::domain::bundle::installed_binary(&e.engine, &e.version, &e.bin_subpath)?;
+                Some((e.version, path))
+            })
+            .collect();
+        bundle_candidates.sort_by(|a, b| a.0.cmp(&b.0));
+        if let Some((_, path)) = bundle_candidates.into_iter().next_back() {
+            candidates.push((path, "forge"));
+        }
+    }
+
     if let Some(prefix) = &prefix {
         candidates.push((prefix.join("bin").join(name), "brew"));
         candidates.push((prefix.join("sbin").join(name), "brew"));

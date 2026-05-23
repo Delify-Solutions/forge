@@ -1,5 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ProcessStatus, Site, SystemReport } from '@/types';
+import { Channel } from '@tauri-apps/api/core';
+import type {
+    BundleEntry,
+    InstallProgress,
+    ProcessStatus,
+    Site,
+    SystemReport,
+} from '@/types';
 
 export const tauri = {
     scanSystem: () => invoke<SystemReport>('scan_system'),
@@ -16,4 +23,20 @@ export const tauri = {
     addSite: (name: string, path: string) =>
         invoke<Site>('add_site', { req: { name, path } }),
     removeSite: (id: number) => invoke<void>('remove_site', { id }),
+    listBundles: () => invoke<BundleEntry[]>('list_bundles'),
+    installBundle: (
+        engine: string,
+        version: string | null,
+        onProgress: (p: InstallProgress) => void,
+    ) => {
+        const channel = new Channel<InstallProgress>();
+        channel.onmessage = onProgress;
+        return invoke<BundleEntry>('install_bundle', {
+            engine,
+            version,
+            onProgress: channel,
+        });
+    },
+    uninstallBundle: (engine: string, version: string) =>
+        invoke<void>('uninstall_bundle', { engine, version }),
 };
