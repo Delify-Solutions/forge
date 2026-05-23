@@ -101,16 +101,31 @@ pub fn catalog() -> Vec<BundleEntry> {
         "darwin-x64"
     };
 
-    let entries = vec![
-        ("nginx", "1.27.3", "nginx 1.27.3", "sbin/nginx"),
-        ("php", "8.3.14", "PHP 8.3.14", "bin/php"),
-        ("php-fpm", "8.3.14", "PHP-FPM 8.3.14", "sbin/php-fpm"),
-        ("dnsmasq", "2.90", "dnsmasq 2.90", "sbin/dnsmasq"),
+    // Hashes are pinned per (engine, version, arch). When a hash is None we
+    // skip verification — used for engines whose CI build hasn't been
+    // published yet. Once forge-engines ships an arch, fill in the hash.
+    let entries: &[(&str, &str, &str, &str, Option<&str>)] = &[
+        ("nginx", "1.27.3", "nginx 1.27.3", "sbin/nginx", None),
+        ("php", "8.3.14", "PHP 8.3.14", "bin/php", None),
+        ("php-fpm", "8.3.14", "PHP-FPM 8.3.14", "sbin/php-fpm", None),
+        (
+            "dnsmasq",
+            "2.90",
+            "dnsmasq 2.90",
+            "sbin/dnsmasq",
+            // Published 2026-05-23 from forge-engines tag dnsmasq-2.90.
+            match arch {
+                "darwin-arm64" => {
+                    Some("45e7d019125692e2dc36883805836fd2d3a4375698d867a9a564ca8efede1b18")
+                }
+                _ => None,
+            },
+        ),
     ];
 
     entries
-        .into_iter()
-        .map(|(engine, version, display, bin_subpath)| {
+        .iter()
+        .map(|(engine, version, display, bin_subpath, sha)| {
             let archive = format!("{engine}-{version}-{arch}.tar.gz");
             let url = format!("{base}/{engine}-{version}/{archive}");
             let install_dir = bundle_dir(engine, version);
@@ -120,7 +135,7 @@ pub fn catalog() -> Vec<BundleEntry> {
                 version: version.to_string(),
                 display_name: display.to_string(),
                 url,
-                sha256: None,
+                sha256: sha.map(|s| s.to_string()),
                 size_bytes: None,
                 bin_subpath: bin_subpath.to_string(),
                 installed,
