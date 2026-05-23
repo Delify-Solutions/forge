@@ -118,10 +118,11 @@ pub fn catalog() -> Vec<BundleEntry> {
             "2.90",
             "dnsmasq 2.90",
             "sbin/dnsmasq",
-            // Published 2026-05-23 from forge-engines tag dnsmasq-2.90.
+            // Re-published 2026-05-23 after the arm64-only matrix
+            // revert refreshed the release artefact.
             match arch {
                 "darwin-arm64" => {
-                    Some("45e7d019125692e2dc36883805836fd2d3a4375698d867a9a564ca8efede1b18")
+                    Some("23c084b786554596828c2a39087c13e7fd84bfebda43fd9520c0c5aa84308017")
                 }
                 _ => None,
             },
@@ -131,10 +132,10 @@ pub fn catalog() -> Vec<BundleEntry> {
             "1.27.3",
             "nginx 1.27.3",
             "sbin/nginx",
-            // Published 2026-05-23 from forge-engines tag nginx-1.27.3.
+            // Re-published 2026-05-23 after the arm64-only matrix revert.
             match arch {
                 "darwin-arm64" => {
-                    Some("5fe899e5062444f41c077eb8ef97e0e6095946dc1d6e7b83a3d2e5598430d532")
+                    Some("f5ec81f4d71a800fc0bbf32a21402215d32fd1e9785b7495774b665511d39a08")
                 }
                 _ => None,
             },
@@ -147,22 +148,32 @@ pub fn catalog() -> Vec<BundleEntry> {
             None,
         ),
         ("php", "8.2.31", "PHP 8.2.31", "bin/php", {
-            // CI hasn't published yet — sha256 will be pinned by a follow-up commit.
-            None
-        }),
-        ("php", "8.3.14", "PHP 8.3.14", "bin/php", {
-            // Published 2026-05-23 from forge-engines tag php-8.3.14 via
-            // static-php-cli 2.8.5 (CLI + FPM in one archive).
+            // Published 2026-05-23 from forge-engines tag php-8.2.31.
             match arch {
                 "darwin-arm64" => {
-                    Some("3634d08e6d677d5bcb10b15bd9a1777ed1b0727353842e25ccf977f9e73e3e4e")
+                    Some("28ffdba966817f843e40cfc68b237d1ff016b208eedc4d85d2d0412684f38418")
+                }
+                _ => None,
+            }
+        }),
+        ("php", "8.3.14", "PHP 8.3.14", "bin/php", {
+            // Re-published 2026-05-23 after the arm64-only matrix revert
+            // — static-php-cli 2.8.5 (CLI + FPM in one archive).
+            match arch {
+                "darwin-arm64" => {
+                    Some("e09c1fc99dd18a57c19b2ca42ec1519de71cfcf93f3b7b4a3d0b46982685a9b7")
                 }
                 _ => None,
             }
         }),
         ("php", "8.4.21", "PHP 8.4.21", "bin/php", {
-            // CI hasn't published yet — sha256 will be pinned by a follow-up commit.
-            None
+            // Published 2026-05-23 from forge-engines tag php-8.4.21.
+            match arch {
+                "darwin-arm64" => {
+                    Some("30ac405088f5525fd7dddc6ed3602c934958e33c0d1f76bdd6bb1cc290163a33")
+                }
+                _ => None,
+            }
         }),
     ];
 
