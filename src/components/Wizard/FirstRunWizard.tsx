@@ -50,10 +50,13 @@ interface ScanRow {
     engine?: EngineKey;
 }
 
+// The PHP bundle ships php-fpm, so install actions on the PHP-FPM row are
+// served by reusing the PHP engine. The frontend keeps them as separate
+// rows for clarity but routes the click to the PHP bundle.
 const ENGINE_BUNDLE_NAME: Record<EngineKey, string> = {
     nginx: 'nginx',
     php: 'php',
-    phpFpm: 'php-fpm',
+    phpFpm: 'php',
 };
 
 interface FirstRunWizardProps {

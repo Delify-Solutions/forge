@@ -53,10 +53,13 @@ pub fn detect_binary(name: &str, version_args: &[&str]) -> Option<DetectedBinary
     // installed version of the engine so a user with multiple PHPs lined up
     // still gets a deterministic answer (newest version wins, by lexical
     // sort of pinned x.y.z strings).
-    let bundle_engine = match name {
-        "php-fpm" => Some("php-fpm"),
-        "nginx" | "php" | "dnsmasq" => Some(name),
-        _ => None,
+    //
+    // The PHP bundle ships both bin/php and sbin/php-fpm — when the caller
+    // asks for "php-fpm" we look inside the "php" bundle for sbin/php-fpm.
+    let (bundle_engine, bundle_subpath_override) = match name {
+        "nginx" | "php" | "dnsmasq" => (Some(name), None::<&str>),
+        "php-fpm" => (Some("php"), Some("sbin/php-fpm")),
+        _ => (None, None),
     };
     if let Some(engine) = bundle_engine {
         let entries = crate::domain::bundle::catalog();
@@ -64,8 +67,8 @@ pub fn detect_binary(name: &str, version_args: &[&str]) -> Option<DetectedBinary
             .into_iter()
             .filter(|e| e.engine == engine)
             .filter_map(|e| {
-                let path =
-                    crate::domain::bundle::installed_binary(&e.engine, &e.version, &e.bin_subpath)?;
+                let subpath = bundle_subpath_override.unwrap_or(&e.bin_subpath);
+                let path = crate::domain::bundle::installed_binary(&e.engine, &e.version, subpath)?;
                 Some((e.version, path))
             })
             .collect();

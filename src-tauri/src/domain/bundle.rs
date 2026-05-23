@@ -104,6 +104,13 @@ pub fn catalog() -> Vec<BundleEntry> {
     // Hashes are pinned per (engine, version, arch). When a hash is None we
     // skip verification — used for engines whose CI build hasn't been
     // published yet. Once forge-engines ships an arch, fill in the hash.
+    // Hashes are pinned per (engine, version, arch). When a hash is None we
+    // skip verification — used for engines whose CI build hasn't been
+    // published yet. Once forge-engines ships an arch, fill in the hash.
+    //
+    // The `php` bundle ships both bin/php and sbin/php-fpm — we treat the
+    // CLI's existence as the install marker and probe sbin/php-fpm separately
+    // via `php_fpm_subpath_for`.
     let entries: &[(&str, &str, &str, &str, Option<&str>)] = &[
         (
             "nginx",
@@ -119,7 +126,6 @@ pub fn catalog() -> Vec<BundleEntry> {
             },
         ),
         ("php", "8.3.14", "PHP 8.3.14", "bin/php", None),
-        ("php-fpm", "8.3.14", "PHP-FPM 8.3.14", "sbin/php-fpm", None),
         (
             "dnsmasq",
             "2.90",
@@ -358,8 +364,9 @@ mod tests {
         let cat = catalog();
         assert!(cat.iter().any(|e| e.engine == "nginx"));
         assert!(cat.iter().any(|e| e.engine == "php"));
-        assert!(cat.iter().any(|e| e.engine == "php-fpm"));
         assert!(cat.iter().any(|e| e.engine == "dnsmasq"));
+        // The PHP bundle ships php-fpm; we don't keep a separate catalog entry.
+        assert!(!cat.iter().any(|e| e.engine == "php-fpm"));
         for entry in &cat {
             assert!(entry
                 .url
