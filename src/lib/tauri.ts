@@ -20,11 +20,13 @@ export const tauri = {
     stopPhpFpm: () => invoke<void>('stop_php_fpm'),
     servicesStatus: () => invoke<ProcessStatus[]>('services_status'),
     listSites: () => invoke<Site[]>('list_sites'),
-    addSite: (name: string, path: string, phpVersion?: string) =>
-        invoke<Site>('add_site', { req: { name, path, phpVersion } }),
+    addSite: (name: string, path: string, phpVersion?: string, webServer?: string) =>
+        invoke<Site>('add_site', { req: { name, path, phpVersion, webServer } }),
     removeSite: (id: number) => invoke<void>('remove_site', { id }),
     updateSitePhp: (id: number, phpVersion: string) =>
         invoke<Site>('update_site_php', { id, phpVersion }),
+    updateSiteWebServer: (id: number, webServer: string) =>
+        invoke<Site>('update_site_web_server', { id, webServer }),
     listBundles: () => invoke<BundleEntry[]>('list_bundles'),
     installBundle: (
         engine: string,

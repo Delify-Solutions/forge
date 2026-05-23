@@ -19,6 +19,8 @@ use crate::platform::macos as plat;
 use crate::store;
 
 pub const NGINX_PROCESS: &str = "nginx";
+pub const APACHE_GATEWAY_ADDR: &str = "127.0.0.1:8288";
+pub const OLS_GATEWAY_ADDR: &str = "127.0.0.1:8188";
 
 #[derive(Serialize)]
 struct SiteCtx {
@@ -139,6 +141,9 @@ pub async fn regenerate(pool: &SqlitePool) -> ForgeResult<()> {
         ctx.insert("logs_dir", &logs_dir().to_string_lossy().to_string());
         ctx.insert("nginx_prefix", &prefix.to_string_lossy().to_string());
         ctx.insert("php_socket", &php_socket.to_string_lossy().to_string());
+        ctx.insert("engine", &site.web_server);
+        ctx.insert("apache_addr", APACHE_GATEWAY_ADDR);
+        ctx.insert("ols_addr", OLS_GATEWAY_ADDR);
 
         let rendered = tera
             .render("site.conf.tera", &ctx)
@@ -258,7 +263,7 @@ mod tests {
         assert!(rendered.contains("listen 80 default_server;"));
         assert!(rendered.contains("daemon off;"));
 
-        // Per-site config.
+        // Per-site config (nginx engine).
         let mut site_ctx = Context::new();
         site_ctx.insert(
             "site",
@@ -271,11 +276,62 @@ mod tests {
         site_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
         site_ctx.insert("nginx_prefix", "/opt/homebrew");
         site_ctx.insert("php_socket", "/tmp/forge/php.sock");
+        site_ctx.insert("engine", "nginx");
+        site_ctx.insert("apache_addr", APACHE_GATEWAY_ADDR);
+        site_ctx.insert("ols_addr", OLS_GATEWAY_ADDR);
         let rendered = tera
             .render("site.conf.tera", &site_ctx)
             .expect("site config renders");
         assert!(rendered.contains("server_name myapp.test;"));
         assert!(rendered.contains("root /Users/me/Code/myapp;"));
         assert!(rendered.contains("fastcgi_pass unix:/tmp/forge/php.sock;"));
+        assert!(!rendered.contains("proxy_pass"));
+
+        // Per-site config (apache engine).
+        let mut apache_ctx = Context::new();
+        apache_ctx.insert(
+            "site",
+            &SiteCtx {
+                name: "blog".to_string(),
+                path: "/Users/me/Code/blog".to_string(),
+                domain: "blog.test".to_string(),
+            },
+        );
+        apache_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
+        apache_ctx.insert("nginx_prefix", "/opt/homebrew");
+        apache_ctx.insert("php_socket", "/tmp/forge/php.sock");
+        apache_ctx.insert("engine", "apache");
+        apache_ctx.insert("apache_addr", APACHE_GATEWAY_ADDR);
+        apache_ctx.insert("ols_addr", OLS_GATEWAY_ADDR);
+        let rendered = tera
+            .render("site.conf.tera", &apache_ctx)
+            .expect("apache site config renders");
+        assert!(rendered.contains("server_name blog.test;"));
+        assert!(rendered.contains(&format!("proxy_pass http://{};", APACHE_GATEWAY_ADDR)));
+        assert!(!rendered.contains("fastcgi_pass"));
+        assert!(!rendered.contains("root /Users/me/Code/blog;"));
+
+        // Per-site config (openlitespeed engine).
+        let mut ols_ctx = Context::new();
+        ols_ctx.insert(
+            "site",
+            &SiteCtx {
+                name: "shop".to_string(),
+                path: "/Users/me/Code/shop".to_string(),
+                domain: "shop.test".to_string(),
+            },
+        );
+        ols_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
+        ols_ctx.insert("nginx_prefix", "/opt/homebrew");
+        ols_ctx.insert("php_socket", "/tmp/forge/php.sock");
+        ols_ctx.insert("engine", "openlitespeed");
+        ols_ctx.insert("apache_addr", APACHE_GATEWAY_ADDR);
+        ols_ctx.insert("ols_addr", OLS_GATEWAY_ADDR);
+        let rendered = tera
+            .render("site.conf.tera", &ols_ctx)
+            .expect("ols site config renders");
+        assert!(rendered.contains("server_name shop.test;"));
+        assert!(rendered.contains(&format!("proxy_pass http://{};", OLS_GATEWAY_ADDR)));
+        assert!(!rendered.contains("fastcgi_pass"));
     }
 }

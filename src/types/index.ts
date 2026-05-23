@@ -1,10 +1,12 @@
+export type WebServer = 'nginx' | 'apache' | 'openlitespeed';
+
 export interface Site {
     id: number;
     name: string;
     path: string;
     domain: string;
     phpVersion: string;
-    webServer: 'nginx' | 'apache' | 'openlitespeed';
+    webServer: WebServer;
     createdAt: string;
 }
 
@@ -36,6 +38,7 @@ export interface AddSiteRequest {
     name: string;
     path: string;
     phpVersion?: string;
+    webServer?: WebServer;
 }
 
 export interface ProcessStatus {

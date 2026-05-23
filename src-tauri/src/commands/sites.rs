@@ -37,6 +37,17 @@ pub async fn update_site_php(
     Ok(site)
 }
 
+#[tauri::command]
+pub async fn update_site_web_server(
+    state: State<'_, AppState>,
+    id: i64,
+    web_server: String,
+) -> ForgeResult<Site> {
+    let site = sites::update_web_server(&state.pool, id, &web_server).await?;
+    let _ = try_reload(&state.pool, &state.supervisor).await;
+    Ok(site)
+}
+
 async fn try_reload(pool: &sqlx::SqlitePool, supervisor: &ProcessSupervisor) -> ForgeResult<()> {
     let status = supervisor.status(nginx::NGINX_PROCESS).await;
     if matches!(status.state, crate::domain::process::ProcessState::Running) {

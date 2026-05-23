@@ -23,6 +23,7 @@ pub struct AddSiteRequest {
     pub name: String,
     pub path: String,
     pub php_version: Option<String>,
+    pub web_server: Option<String>,
 }
 
 fn validate_name(name: &str) -> ForgeResult<()> {
@@ -39,6 +40,15 @@ fn validate_name(name: &str) -> ForgeResult<()> {
         ));
     }
     Ok(())
+}
+
+fn validate_web_server(value: &str) -> ForgeResult<()> {
+    match value {
+        "nginx" | "apache" | "openlitespeed" => Ok(()),
+        _ => Err(ForgeError::Other(format!(
+            "invalid web_server '{value}': must be nginx, apache, or openlitespeed"
+        ))),
+    }
 }
 
 pub async fn list(pool: &SqlitePool) -> ForgeResult<Vec<Site>> {
@@ -67,6 +77,8 @@ pub async fn list(pool: &SqlitePool) -> ForgeResult<Vec<Site>> {
 
 pub async fn add(pool: &SqlitePool, req: AddSiteRequest) -> ForgeResult<Site> {
     validate_name(&req.name)?;
+    let web_server = req.web_server.as_deref().unwrap_or("nginx");
+    validate_web_server(web_server)?;
     let path = std::path::Path::new(&req.path);
     if !path.exists() {
         return Err(ForgeError::Other(format!(
@@ -81,18 +93,20 @@ pub async fn add(pool: &SqlitePool, req: AddSiteRequest) -> ForgeResult<Site> {
         )));
     }
 
-    let result = sqlx::query("INSERT INTO sites (name, path, php_version) VALUES (?, ?, ?)")
-        .bind(&req.name)
-        .bind(&req.path)
-        .bind(req.php_version.as_deref().unwrap_or("8.3"))
-        .execute(pool)
-        .await
-        .map_err(|e| match e {
-            sqlx::Error::Database(db) if db.is_unique_violation() => {
-                ForgeError::Other(format!("site name '{}' already exists", req.name))
-            }
-            other => ForgeError::Other(format!("add site: {other}")),
-        })?;
+    let result =
+        sqlx::query("INSERT INTO sites (name, path, php_version, web_server) VALUES (?, ?, ?, ?)")
+            .bind(&req.name)
+            .bind(&req.path)
+            .bind(req.php_version.as_deref().unwrap_or("8.3"))
+            .bind(web_server)
+            .execute(pool)
+            .await
+            .map_err(|e| match e {
+                sqlx::Error::Database(db) if db.is_unique_violation() => {
+                    ForgeError::Other(format!("site name '{}' already exists", req.name))
+                }
+                other => ForgeError::Other(format!("add site: {other}")),
+            })?;
 
     let id = result.last_insert_rowid();
 
@@ -185,6 +199,39 @@ pub async fn update_php_version(
     })
 }
 
+pub async fn update_web_server(pool: &SqlitePool, id: i64, web_server: &str) -> ForgeResult<Site> {
+    validate_web_server(web_server)?;
+
+    let result = sqlx::query("UPDATE sites SET web_server = ? WHERE id = ?")
+        .bind(web_server)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| ForgeError::Other(format!("update web_server: {e}")))?;
+
+    if result.rows_affected() == 0 {
+        return Err(ForgeError::Other(format!("site {id} not found")));
+    }
+
+    let row = sqlx::query_as::<_, (i64, String, String, String, String, String)>(
+        "SELECT id, name, path, php_version, web_server, created_at FROM sites WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| ForgeError::Other(format!("fetch updated site: {e}")))?;
+
+    Ok(Site {
+        domain: format!("{}.test", row.1),
+        id: row.0,
+        name: row.1,
+        path: row.2,
+        php_version: row.3,
+        web_server: row.4,
+        created_at: row.5,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,5 +275,20 @@ mod tests {
         assert!(validate_php_version("").is_err());
         assert!(validate_php_version(".3").is_err());
         assert!(validate_php_version("8.").is_err());
+    }
+
+    #[test]
+    fn accepts_known_web_servers() {
+        assert!(validate_web_server("nginx").is_ok());
+        assert!(validate_web_server("apache").is_ok());
+        assert!(validate_web_server("openlitespeed").is_ok());
+    }
+
+    #[test]
+    fn rejects_unknown_web_servers() {
+        assert!(validate_web_server("").is_err());
+        assert!(validate_web_server("iis").is_err());
+        assert!(validate_web_server("Nginx").is_err());
+        assert!(validate_web_server("ngnix").is_err());
     }
 }

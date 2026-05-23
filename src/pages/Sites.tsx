@@ -15,7 +15,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { tauri } from '@/lib/tauri';
-import type { Site } from '@/types';
+import type { Site, WebServer } from '@/types';
 
 export function Sites() {
     const { t } = useTranslation();
@@ -129,6 +129,15 @@ function SiteTable({
         }
     };
 
+    const handleEngineChange = async (siteId: number, newEngine: string) => {
+        try {
+            await tauri.updateSiteWebServer(siteId, newEngine);
+            onRefresh();
+        } catch {
+            // silently fail — row will keep old value
+        }
+    };
+
     return (
         <div className="overflow-hidden rounded-lg border border-border bg-card">
             <table className="w-full text-sm">
@@ -142,6 +151,9 @@ function SiteTable({
                         </th>
                         <th className="px-4 py-2 text-left font-medium">
                             {t('sites.phpHeader')}
+                        </th>
+                        <th className="px-4 py-2 text-left font-medium">
+                            {t('sites.engineHeader')}
                         </th>
                         <th className="px-4 py-2 text-right font-medium">
                             {t('sites.actionsHeader')}
@@ -186,6 +198,30 @@ function SiteTable({
                                     site.phpVersion
                                 )}
                             </td>
+                            <td className="px-4 py-2.5 text-muted-foreground">
+                                <select
+                                    value={site.webServer}
+                                    onChange={(e) =>
+                                        handleEngineChange(
+                                            site.id,
+                                            e.target.value,
+                                        )
+                                    }
+                                    className="h-7 rounded-md border border-input bg-muted/50 px-2 text-xs"
+                                >
+                                    <option value="nginx">
+                                        {t('sites.engineNginx')}
+                                    </option>
+                                    <option value="apache" disabled>
+                                        {t('sites.engineApache')}{' '}
+                                        {t('sites.engineComingSoon')}
+                                    </option>
+                                    <option value="openlitespeed" disabled>
+                                        {t('sites.engineOls')}{' '}
+                                        {t('sites.engineComingSoon')}
+                                    </option>
+                                </select>
+                            </td>
                             <td className="px-4 py-2.5 text-right">
                                 <Button
                                     size="sm"
@@ -216,6 +252,7 @@ function AddSiteDialog({
     const [name, setName] = useState('');
     const [path, setPath] = useState('');
     const [phpVersion, setPhpVersion] = useState('');
+    const [webServer, setWebServer] = useState<WebServer>('nginx');
     const [phpLines, setPhpLines] = useState<string[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [err, setErr] = useState<string | null>(null);
@@ -236,6 +273,7 @@ function AddSiteDialog({
         setName('');
         setPath('');
         setPhpVersion(phpLines.length > 0 ? phpLines[0] : '');
+        setWebServer('nginx');
         setErr(null);
     };
 
@@ -267,7 +305,7 @@ function AddSiteDialog({
         setErr(null);
         setSubmitting(true);
         try {
-            await tauri.addSite(name, path, phpVersion || undefined);
+            await tauri.addSite(name, path, phpVersion || undefined, webServer);
             reset();
             onOpenChange(false);
             onAdded();
@@ -362,6 +400,34 @@ function AddSiteDialog({
                                 {t('sites.phpEmpty')}
                             </p>
                         )}
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">
+                            {t('sites.engineLabel')}
+                        </label>
+                        <select
+                            value={webServer}
+                            onChange={(e) =>
+                                setWebServer(e.target.value as WebServer)
+                            }
+                            className="h-9 w-full rounded-md border border-input bg-muted/50 px-3 text-sm"
+                        >
+                            <option value="nginx">
+                                {t('sites.engineNginx')}
+                            </option>
+                            <option value="apache" disabled>
+                                {t('sites.engineApache')}{' '}
+                                {t('sites.engineComingSoon')}
+                            </option>
+                            <option value="openlitespeed" disabled>
+                                {t('sites.engineOls')}{' '}
+                                {t('sites.engineComingSoon')}
+                            </option>
+                        </select>
+                        <p className="text-xs text-muted-foreground">
+                            {t('sites.engineHelp')}
+                        </p>
                     </div>
 
                     {err && <p className="text-xs text-destructive">{err}</p>}
