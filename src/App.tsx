@@ -1,14 +1,28 @@
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { Sidebar } from '@/components/Sidebar';
+import { General } from '@/pages/General';
+import { Sites } from '@/pages/Sites';
+import { Php } from '@/pages/Php';
+import { Services } from '@/pages/Services';
+import { About } from '@/pages/About';
+
 export function App() {
     return (
-        <div className="flex h-screen w-screen items-center justify-center bg-background text-foreground">
-            <div className="text-center">
-                <h1 className="text-3xl font-semibold tracking-tight">
-                    Delify Forge
-                </h1>
-                <p className="mt-2 text-sm text-muted-foreground">
-                    Scaffold ready. UI layout arrives in Bước 4.
-                </p>
-            </div>
+        <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+            <Sidebar />
+            <main className="flex-1 overflow-auto p-6">
+                <Routes>
+                    <Route
+                        path="/"
+                        element={<Navigate to="/sites" replace />}
+                    />
+                    <Route path="/general" element={<General />} />
+                    <Route path="/sites" element={<Sites />} />
+                    <Route path="/php" element={<Php />} />
+                    <Route path="/services" element={<Services />} />
+                    <Route path="/about" element={<About />} />
+                </Routes>
+            </main>
         </div>
     );
 }
