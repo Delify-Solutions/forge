@@ -3,6 +3,7 @@
 use tauri::State;
 
 use crate::domain::dns;
+use crate::domain::nginx;
 use crate::domain::process::ProcessStatus;
 use crate::error::{ForgeError, ForgeResult};
 use crate::AppState;
@@ -33,6 +34,21 @@ pub async fn start_dnsmasq(state: State<'_, AppState>) -> ForgeResult<u32> {
 #[tauri::command]
 pub async fn stop_dnsmasq(state: State<'_, AppState>) -> ForgeResult<()> {
     dns::stop(&state.supervisor).await
+}
+
+#[tauri::command]
+pub async fn start_nginx(state: State<'_, AppState>) -> ForgeResult<u32> {
+    nginx::start(&state.pool, &state.supervisor).await
+}
+
+#[tauri::command]
+pub async fn stop_nginx(state: State<'_, AppState>) -> ForgeResult<()> {
+    nginx::stop(&state.supervisor).await
+}
+
+#[tauri::command]
+pub async fn reload_nginx(state: State<'_, AppState>) -> ForgeResult<()> {
+    nginx::reload(&state.pool).await
 }
 
 #[tauri::command]

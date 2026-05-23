@@ -58,6 +58,9 @@ pub fn run() {
             commands::wizard::setup_dns_resolver,
             commands::wizard::start_dnsmasq,
             commands::wizard::stop_dnsmasq,
+            commands::wizard::start_nginx,
+            commands::wizard::stop_nginx,
+            commands::wizard::reload_nginx,
             commands::wizard::services_status,
         ])
         .build(tauri::generate_context!())
