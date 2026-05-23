@@ -2,5 +2,6 @@
 
 pub mod dns;
 pub mod nginx;
+pub mod php;
 pub mod process;
 pub mod sites;

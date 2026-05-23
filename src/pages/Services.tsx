@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, Play, RefreshCw, Square } from 'lucide-react';
 
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -12,16 +12,44 @@ const STATE_DOT: Record<ProcessStatus['state'], string> = {
     crashed: 'bg-destructive',
 };
 
+interface ManagedService {
+    name: string;
+    label: string;
+    start: () => Promise<unknown>;
+    stop: () => Promise<unknown>;
+}
+
+const SERVICES: ManagedService[] = [
+    {
+        name: 'dnsmasq',
+        label: 'dnsmasq',
+        start: () => tauri.startDnsmasq(),
+        stop: () => tauri.stopDnsmasq(),
+    },
+    {
+        name: 'nginx',
+        label: 'Nginx',
+        start: () => tauri.startNginx(),
+        stop: () => tauri.stopNginx(),
+    },
+    {
+        name: 'php-fpm',
+        label: 'PHP-FPM',
+        start: () => tauri.startPhpFpm(),
+        stop: () => tauri.stopPhpFpm(),
+    },
+];
+
 export function Services() {
     const [statuses, setStatuses] = useState<ProcessStatus[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [busy, setBusy] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const refresh = async () => {
-        setLoading(true);
         try {
             setStatuses(await tauri.servicesStatus());
-        } finally {
-            setLoading(false);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Refresh failed.');
         }
     };
 
@@ -32,6 +60,25 @@ export function Services() {
         }, 2000);
         return () => window.clearInterval(id);
     }, []);
+
+    const stateOf = (name: string): ProcessStatus['state'] =>
+        statuses.find((s) => s.name === name)?.state ?? 'stopped';
+    const pidOf = (name: string): number | undefined =>
+        statuses.find((s) => s.name === name)?.pid;
+
+    const run = async (svc: ManagedService, action: 'start' | 'stop') => {
+        setBusy(svc.name);
+        setError(null);
+        try {
+            if (action === 'start') await svc.start();
+            else await svc.stop();
+            await refresh();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Operation failed.');
+        } finally {
+            setBusy(null);
+        }
+    };
 
     return (
         <div>
@@ -46,58 +93,92 @@ export function Services() {
                 </Button>
             </div>
 
-            {loading && statuses.length === 0 ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading...
+            {error && (
+                <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+                    {error}
                 </div>
-            ) : statuses.length === 0 ? (
-                <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-                    No supervised processes yet. Run the first-run wizard to
-                    start dnsmasq.
-                </div>
-            ) : (
-                <div className="overflow-hidden rounded-lg border border-border bg-card">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
-                            <tr>
-                                <th className="px-4 py-2 text-left font-medium">
-                                    Service
-                                </th>
-                                <th className="px-4 py-2 text-left font-medium">
-                                    State
-                                </th>
-                                <th className="px-4 py-2 text-left font-medium">
-                                    PID
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {statuses.map((p) => (
+            )}
+
+            <div className="overflow-hidden rounded-lg border border-border bg-card">
+                <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+                        <tr>
+                            <th className="px-4 py-2 text-left font-medium">
+                                Service
+                            </th>
+                            <th className="px-4 py-2 text-left font-medium">
+                                State
+                            </th>
+                            <th className="px-4 py-2 text-left font-medium">
+                                PID
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {SERVICES.map((svc) => {
+                            const state = stateOf(svc.name);
+                            const pid = pidOf(svc.name);
+                            const isBusy = busy === svc.name;
+                            return (
                                 <tr
-                                    key={p.name}
+                                    key={svc.name}
                                     className="border-t border-border last:border-b-0"
                                 >
                                     <td className="px-4 py-2.5 font-medium">
-                                        {p.name}
+                                        {svc.label}
                                     </td>
                                     <td className="px-4 py-2.5">
                                         <span className="inline-flex items-center gap-2">
                                             <span
-                                                className={`h-2 w-2 rounded-full ${STATE_DOT[p.state]}`}
+                                                className={`h-2 w-2 rounded-full ${STATE_DOT[state]}`}
                                             />
-                                            {p.state}
+                                            {state}
                                         </span>
                                     </td>
                                     <td className="px-4 py-2.5 text-muted-foreground">
-                                        {p.pid ?? '—'}
+                                        {pid ?? '—'}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right">
+                                        {state === 'running' ? (
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => run(svc, 'stop')}
+                                                disabled={isBusy}
+                                            >
+                                                {isBusy ? (
+                                                    <Loader2 className="animate-spin" />
+                                                ) : (
+                                                    <Square />
+                                                )}
+                                                Stop
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                size="sm"
+                                                onClick={() =>
+                                                    run(svc, 'start')
+                                                }
+                                                disabled={isBusy}
+                                            >
+                                                {isBusy ? (
+                                                    <Loader2 className="animate-spin" />
+                                                ) : (
+                                                    <Play />
+                                                )}
+                                                Start
+                                            </Button>
+                                        )}
                                     </td>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

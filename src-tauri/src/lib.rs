@@ -61,6 +61,8 @@ pub fn run() {
             commands::wizard::start_nginx,
             commands::wizard::stop_nginx,
             commands::wizard::reload_nginx,
+            commands::wizard::start_php_fpm,
+            commands::wizard::stop_php_fpm,
             commands::wizard::services_status,
         ])
         .build(tauri::generate_context!())

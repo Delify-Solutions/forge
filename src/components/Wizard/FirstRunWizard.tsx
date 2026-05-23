@@ -407,6 +407,8 @@ function DnsStep() {
         try {
             await tauri.setupDnsResolver();
             await tauri.startDnsmasq();
+            await tauri.startPhpFpm();
+            await tauri.startNginx();
             setDone(true);
         } catch (e) {
             setErr(e instanceof Error ? e.message : 'Setup failed.');
@@ -428,14 +430,14 @@ function DnsStep() {
             <div className="rounded-md border border-border bg-background p-3 text-xs">
                 <p className="text-muted-foreground">
                     macOS will show a native password dialog. Forge does not
-                    store your password — it is used once and discarded. dnsmasq
-                    starts on port 5353 (no root needed).
+                    store your password — it is used once and discarded.
+                    dnsmasq, PHP-FPM, and Nginx start automatically afterward.
                 </p>
             </div>
             {done ? (
                 <div className="flex items-center gap-2 text-emerald-500">
                     <CheckCircle2 className="h-4 w-4" />
-                    Resolver installed, dnsmasq running.
+                    Resolver installed and engines running.
                 </div>
             ) : (
                 <div className="flex gap-2">

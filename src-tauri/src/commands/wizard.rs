@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::domain::dns;
 use crate::domain::nginx;
+use crate::domain::php;
 use crate::domain::process::ProcessStatus;
 use crate::error::{ForgeError, ForgeResult};
 use crate::AppState;
@@ -49,6 +50,16 @@ pub async fn stop_nginx(state: State<'_, AppState>) -> ForgeResult<()> {
 #[tauri::command]
 pub async fn reload_nginx(state: State<'_, AppState>) -> ForgeResult<()> {
     nginx::reload(&state.pool).await
+}
+
+#[tauri::command]
+pub async fn start_php_fpm(state: State<'_, AppState>) -> ForgeResult<u32> {
+    php::start(&state.supervisor).await
+}
+
+#[tauri::command]
+pub async fn stop_php_fpm(state: State<'_, AppState>) -> ForgeResult<()> {
+    php::stop(&state.supervisor).await
 }
 
 #[tauri::command]

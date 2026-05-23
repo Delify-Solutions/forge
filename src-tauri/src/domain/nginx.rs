@@ -58,7 +58,7 @@ fn site_config_path(name: &str) -> PathBuf {
 }
 
 fn php_socket_path() -> PathBuf {
-    store::data_dir().join("runtime/php/system.sock")
+    crate::domain::php::socket_path()
 }
 
 fn nginx_prefix(binary: &std::path::Path) -> PathBuf {
