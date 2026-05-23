@@ -1,0 +1,45 @@
+{
+    "$schema": "https://schema.tauri.app/config/2",
+    "productName": "Delify Forge",
+    "version": "0.0.0",
+    "identifier": "vn.delify.forge",
+    "build": {
+        "beforeDevCommand": "pnpm dev",
+        "devUrl": "http://localhost:1420",
+        "beforeBuildCommand": "pnpm build",
+        "frontendDist": "../dist"
+    },
+    "app": {
+        "windows": [
+            {
+                "title": "Delify Forge",
+                "width": 1100,
+                "height": 720,
+                "minWidth": 900,
+                "minHeight": 600,
+                "resizable": true,
+                "fullscreen": false,
+                "decorations": true,
+                "transparent": false,
+                "theme": "Dark"
+            }
+        ],
+        "security": {
+            "csp": null
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": "all",
+        "icon": [
+            "icons/32x32.png",
+            "icons/128x128.png",
+            "icons/128x128@2x.png",
+            "icons/icon.icns",
+            "icons/icon.ico"
+        ],
+        "category": "DeveloperTool",
+        "shortDescription": "Native local web development environment",
+        "longDescription": "Delify Forge — open-source native local web development environment for modern stacks (PHP, Node.js, and more)."
+    }
+}
