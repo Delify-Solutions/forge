@@ -112,6 +112,20 @@ pub fn catalog() -> Vec<BundleEntry> {
     // CLI's existence as the install marker and probe sbin/php-fpm separately
     // via `php_fpm_subpath_for`.
     let entries: &[(&str, &str, &str, &str, Option<&str>)] = &[
+        ("apache", "2.4.62", "Apache 2.4.62", "sbin/httpd", None),
+        (
+            "dnsmasq",
+            "2.90",
+            "dnsmasq 2.90",
+            "sbin/dnsmasq",
+            // Published 2026-05-23 from forge-engines tag dnsmasq-2.90.
+            match arch {
+                "darwin-arm64" => {
+                    Some("45e7d019125692e2dc36883805836fd2d3a4375698d867a9a564ca8efede1b18")
+                }
+                _ => None,
+            },
+        ),
         (
             "nginx",
             "1.27.3",
@@ -124,6 +138,13 @@ pub fn catalog() -> Vec<BundleEntry> {
                 }
                 _ => None,
             },
+        ),
+        (
+            "openlitespeed",
+            "1.8.4",
+            "OpenLiteSpeed 1.8.4",
+            "sbin/lshttpd",
+            None,
         ),
         ("php", "8.2.31", "PHP 8.2.31", "bin/php", {
             // CI hasn't published yet — sha256 will be pinned by a follow-up commit.
@@ -143,19 +164,6 @@ pub fn catalog() -> Vec<BundleEntry> {
             // CI hasn't published yet — sha256 will be pinned by a follow-up commit.
             None
         }),
-        (
-            "dnsmasq",
-            "2.90",
-            "dnsmasq 2.90",
-            "sbin/dnsmasq",
-            // Published 2026-05-23 from forge-engines tag dnsmasq-2.90.
-            match arch {
-                "darwin-arm64" => {
-                    Some("45e7d019125692e2dc36883805836fd2d3a4375698d867a9a564ca8efede1b18")
-                }
-                _ => None,
-            },
-        ),
     ];
 
     entries
@@ -406,9 +414,11 @@ mod tests {
     #[test]
     fn catalog_has_known_engines() {
         let cat = catalog();
-        assert!(cat.iter().any(|e| e.engine == "nginx"));
-        assert!(cat.iter().any(|e| e.engine == "php"));
+        assert!(cat.iter().any(|e| e.engine == "apache"));
         assert!(cat.iter().any(|e| e.engine == "dnsmasq"));
+        assert!(cat.iter().any(|e| e.engine == "nginx"));
+        assert!(cat.iter().any(|e| e.engine == "openlitespeed"));
+        assert!(cat.iter().any(|e| e.engine == "php"));
         // The PHP bundle ships php-fpm; we don't keep a separate catalog entry.
         assert!(!cat.iter().any(|e| e.engine == "php-fpm"));
         for entry in &cat {
