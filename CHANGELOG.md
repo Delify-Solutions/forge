@@ -7,8 +7,28 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [0.0.1-mvp] — 2026-05-23
+
 ### Added
 - Repository foundation documents: `README.md`, `README.vi.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `CHANGELOG.md`.
-- `.gitignore` rules for Tauri build artifacts, Node/frontend caches, OS/editor files, environment files, local-only docs (`docs/`), and OpenSpec workflow (`openspec/`).
+- Tauri 2 + React 18 + TypeScript + Tailwind CSS 4 + shadcn-style UI primitives (Button, Dialog, Input).
+- Sidebar layout with five navigation surfaces (General, Sites, PHP, Services, About) inspired by Laravel Herd.
+- Non-dismissible six-step first-run wizard: Welcome → System scan → Choose source → Resolve conflicts → Setup DNS → Done.
+- Real `scan_system` Tauri command on macOS that detects Homebrew, Nginx, PHP, PHP-FPM, port 80/443/5353 status, and `/etc/resolver/test` presence.
+- SQLite-backed site persistence (sqlx migrations) with kebab-case validation and Tauri commands `list_sites`, `add_site`, `remove_site`.
+- Sites page with empty state, table view, and a Tauri folder-picker Add Site dialog.
+- DNS resolver setup via osascript (native macOS admin prompt) — idempotent: skipped when `/etc/resolver/test` already matches.
+- dnsmasq lifecycle on the unprivileged port 5353, configured to route `*.test` to `127.0.0.1`.
+- Nginx config generation from SQLite via Tera templates, with stale per-site config cleanup and `nginx -s reload` after add/remove site.
+- PHP-FPM single-pool lifecycle sharing a Unix socket with Nginx.
+- Services page with live state polling and Start/Stop controls for dnsmasq, Nginx, and PHP-FPM.
+- Process supervisor (`tokio::process::Child`) with start/stop/status/shutdown_all, hooked into Tauri's `RunEvent::ExitRequested` so child processes die with the app.
+- Cross-platform-ready architecture: `platform::macos` is implemented; `platform::linux` and `platform::windows` are stubs returning `ForgeError::NotImplemented`.
+- Rust unit tests for kebab-case validation, dnsmasq constants, and Nginx template rendering.
 
-[Unreleased]: https://github.com/Delify-Solutions/forge/compare/HEAD
+### Notes
+- macOS 14+ only. Linux is on the V1.0 roadmap, Windows on V2.0.
+- PHP versioning, alias domains, project scaffolding, database management, API tester, and the cron tab arrive in V0.2 onward.
+
+[Unreleased]: https://github.com/Delify-Solutions/forge/compare/v0.0.1-mvp...HEAD
+[0.0.1-mvp]: https://github.com/Delify-Solutions/forge/releases/tag/v0.0.1-mvp
