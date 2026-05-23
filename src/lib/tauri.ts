@@ -6,6 +6,6 @@ export const tauri = {
     setupDnsResolver: () => invoke<void>('setup_dns_resolver'),
     listSites: () => invoke<Site[]>('list_sites'),
     addSite: (name: string, path: string) =>
-        invoke<Site>('add_site', { name, path }),
+        invoke<Site>('add_site', { req: { name, path } }),
     removeSite: (id: number) => invoke<void>('remove_site', { id }),
 };
