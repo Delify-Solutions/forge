@@ -105,7 +105,19 @@ pub fn catalog() -> Vec<BundleEntry> {
     // skip verification — used for engines whose CI build hasn't been
     // published yet. Once forge-engines ships an arch, fill in the hash.
     let entries: &[(&str, &str, &str, &str, Option<&str>)] = &[
-        ("nginx", "1.27.3", "nginx 1.27.3", "sbin/nginx", None),
+        (
+            "nginx",
+            "1.27.3",
+            "nginx 1.27.3",
+            "sbin/nginx",
+            // Published 2026-05-23 from forge-engines tag nginx-1.27.3.
+            match arch {
+                "darwin-arm64" => {
+                    Some("5fe899e5062444f41c077eb8ef97e0e6095946dc1d6e7b83a3d2e5598430d532")
+                }
+                _ => None,
+            },
+        ),
         ("php", "8.3.14", "PHP 8.3.14", "bin/php", None),
         ("php-fpm", "8.3.14", "PHP-FPM 8.3.14", "sbin/php-fpm", None),
         (
