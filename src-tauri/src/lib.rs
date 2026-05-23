@@ -9,10 +9,14 @@ mod platform;
 mod store;
 
 use sqlx::SqlitePool;
+use tauri::{Manager, RunEvent};
 use tracing_subscriber::EnvFilter;
+
+use crate::domain::process::ProcessSupervisor;
 
 pub struct AppState {
     pub pool: SqlitePool,
+    pub supervisor: ProcessSupervisor,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,9 +40,12 @@ pub fn run() {
             .expect("failed to open application database")
     });
 
-    let app_state = AppState { pool };
+    let app_state = AppState {
+        pool,
+        supervisor: ProcessSupervisor::new(),
+    };
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(app_state)
@@ -48,7 +55,19 @@ pub fn run() {
             commands::sites::list_sites,
             commands::sites::add_site,
             commands::sites::remove_site,
+            commands::wizard::setup_dns_resolver,
+            commands::wizard::start_dnsmasq,
+            commands::wizard::stop_dnsmasq,
+            commands::wizard::services_status,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(move |app_handle, event| {
+        if let RunEvent::ExitRequested { .. } = &event {
+            tracing::info!("exit requested, shutting down supervised processes");
+            let state = app_handle.state::<AppState>();
+            tauri::async_runtime::block_on(state.supervisor.shutdown_all());
+        }
+    });
 }

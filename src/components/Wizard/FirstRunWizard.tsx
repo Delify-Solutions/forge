@@ -397,6 +397,24 @@ function ConflictsStep({ report }: { report: SystemReport | null }) {
 }
 
 function DnsStep() {
+    const [busy, setBusy] = useState(false);
+    const [done, setDone] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
+
+    const run = async () => {
+        setBusy(true);
+        setErr(null);
+        try {
+            await tauri.setupDnsResolver();
+            await tauri.startDnsmasq();
+            setDone(true);
+        } catch (e) {
+            setErr(e instanceof Error ? e.message : 'Setup failed.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
     return (
         <div className="space-y-3 text-sm">
             <p>
@@ -410,15 +428,24 @@ function DnsStep() {
             <div className="rounded-md border border-border bg-background p-3 text-xs">
                 <p className="text-muted-foreground">
                     macOS will show a native password dialog. Forge does not
-                    store your password — it is used once and discarded.
+                    store your password — it is used once and discarded. dnsmasq
+                    starts on port 5353 (no root needed).
                 </p>
             </div>
-            <div className="flex gap-2">
-                <Button size="sm" disabled>
-                    <Loader2 className="animate-spin" />
-                    Wired in Bước 8
-                </Button>
-            </div>
+            {done ? (
+                <div className="flex items-center gap-2 text-emerald-500">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Resolver installed, dnsmasq running.
+                </div>
+            ) : (
+                <div className="flex gap-2">
+                    <Button size="sm" onClick={run} disabled={busy}>
+                        {busy ? <Loader2 className="animate-spin" /> : null}
+                        {busy ? 'Setting up...' : 'Setup DNS now'}
+                    </Button>
+                </div>
+            )}
+            {err && <p className="text-xs text-destructive">{err}</p>}
         </div>
     );
 }

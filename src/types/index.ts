@@ -29,3 +29,9 @@ export interface SystemReport {
     ports: PortStatus[];
     resolver: { exists: boolean; correct: boolean };
 }
+
+export interface ProcessStatus {
+    name: string;
+    state: 'stopped' | 'running' | 'crashed';
+    pid?: number;
+}

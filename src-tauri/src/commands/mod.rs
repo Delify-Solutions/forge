@@ -2,3 +2,4 @@
 
 pub mod sites;
 pub mod system;
+pub mod wizard;

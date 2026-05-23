@@ -9,6 +9,8 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::error::{ForgeError, ForgeResult};
+
 const RESOLVER_PATH: &str = "/etc/resolver/test";
 const RESOLVER_EXPECTED: &str = "nameserver 127.0.0.1\nport 5353\n";
 const BREW_PREFIX_CANDIDATES: &[&str] = &["/opt/homebrew", "/usr/local"];
@@ -118,4 +120,43 @@ pub fn resolver_correct() -> bool {
     fs::read_to_string(RESOLVER_PATH)
         .map(|content| content == RESOLVER_EXPECTED)
         .unwrap_or(false)
+}
+
+/// Write `/etc/resolver/test` via osascript, prompting the user once for
+/// admin credentials through the native macOS dialog. Idempotent: if the
+/// file already exists with the expected content, returns Ok without
+/// prompting.
+pub fn setup_resolver() -> ForgeResult<()> {
+    if resolver_correct() {
+        tracing::info!("resolver already correct, skipping prompt");
+        return Ok(());
+    }
+
+    // Use printf with octal escape so the AppleScript shell text stays
+    // straightforward to embed.
+    let prompt = "Delify Forge needs admin access to route .test domains to your local machine.";
+    let script = format!(
+        "do shell script \"mkdir -p /etc/resolver && /usr/bin/printf 'nameserver 127.0.0.1\\nport 5353\\n' > /etc/resolver/test && /bin/chmod 644 /etc/resolver/test\" with administrator privileges with prompt \"{prompt}\""
+    );
+
+    let output = Command::new("/usr/bin/osascript")
+        .arg("-e")
+        .arg(&script)
+        .output()
+        .map_err(|e| ForgeError::Other(format!("osascript spawn failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(ForgeError::Other(format!(
+            "resolver setup failed (osascript exit {}): {stderr}",
+            output.status.code().unwrap_or(-1)
+        )));
+    }
+
+    if !resolver_correct() {
+        return Err(ForgeError::Other(
+            "resolver write reported success but content does not match expected".into(),
+        ));
+    }
+    Ok(())
 }
