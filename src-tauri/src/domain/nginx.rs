@@ -206,3 +206,49 @@ pub async fn reload(pool: &SqlitePool) -> ForgeResult<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn templates_compile_and_render() {
+        let tera = build_tera().expect("tera should load embedded templates");
+
+        // Master config with no sites — must still produce a valid-looking
+        // file with the catch-all 404 server block.
+        let mut master_ctx = Context::new();
+        let empty_sites: Vec<SiteCtx> = Vec::new();
+        master_ctx.insert("sites", &empty_sites);
+        master_ctx.insert("runtime_dir", "/tmp/forge/runtime/nginx");
+        master_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
+        master_ctx.insert("nginx_prefix", "/opt/homebrew");
+
+        let rendered = tera
+            .render("nginx.conf.tera", &master_ctx)
+            .expect("master config renders");
+        assert!(rendered.contains("worker_processes 2;"));
+        assert!(rendered.contains("listen 80 default_server;"));
+        assert!(rendered.contains("daemon off;"));
+
+        // Per-site config.
+        let mut site_ctx = Context::new();
+        site_ctx.insert(
+            "site",
+            &SiteCtx {
+                name: "myapp".to_string(),
+                path: "/Users/me/Code/myapp".to_string(),
+                domain: "myapp.test".to_string(),
+            },
+        );
+        site_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
+        site_ctx.insert("nginx_prefix", "/opt/homebrew");
+        site_ctx.insert("php_socket", "/tmp/forge/php.sock");
+        let rendered = tera
+            .render("site.conf.tera", &site_ctx)
+            .expect("site config renders");
+        assert!(rendered.contains("server_name myapp.test;"));
+        assert!(rendered.contains("root /Users/me/Code/myapp;"));
+        assert!(rendered.contains("fastcgi_pass unix:/tmp/forge/php.sock;"));
+    }
+}

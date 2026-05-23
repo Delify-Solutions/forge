@@ -125,3 +125,28 @@ pub async fn remove(pool: &SqlitePool, id: i64) -> ForgeResult<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_kebab_case() {
+        assert!(validate_name("myapp").is_ok());
+        assert!(validate_name("my-app").is_ok());
+        assert!(validate_name("app-2").is_ok());
+        assert!(validate_name("a").is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_names() {
+        assert!(validate_name("").is_err());
+        assert!(validate_name("MyApp").is_err());
+        assert!(validate_name("my_app").is_err());
+        assert!(validate_name("-leading").is_err());
+        assert!(validate_name("trailing-").is_err());
+        assert!(validate_name("space app").is_err());
+        let long = "a".repeat(64);
+        assert!(validate_name(&long).is_err());
+    }
+}
