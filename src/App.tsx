@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
+import { FirstRunWizard } from '@/components/Wizard/FirstRunWizard';
 import { General } from '@/pages/General';
 import { Sites } from '@/pages/Sites';
 import { Php } from '@/pages/Php';
@@ -7,6 +9,10 @@ import { Services } from '@/pages/Services';
 import { About } from '@/pages/About';
 
 export function App() {
+    // Bước 6 wires this to a real `scan_system` health check. For now the
+    // wizard surfaces on every launch so the UX can be iterated against.
+    const [needsSetup, setNeedsSetup] = useState(true);
+
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
             <Sidebar />
@@ -23,6 +29,10 @@ export function App() {
                     <Route path="/about" element={<About />} />
                 </Routes>
             </main>
+            <FirstRunWizard
+                open={needsSetup}
+                onComplete={() => setNeedsSetup(false)}
+            />
         </div>
     );
 }
