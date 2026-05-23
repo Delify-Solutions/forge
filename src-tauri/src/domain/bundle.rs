@@ -125,7 +125,16 @@ pub fn catalog() -> Vec<BundleEntry> {
                 _ => None,
             },
         ),
-        ("php", "8.3.14", "PHP 8.3.14", "bin/php", None),
+        ("php", "8.3.14", "PHP 8.3.14", "bin/php", {
+            // Published 2026-05-23 from forge-engines tag php-8.3.14 via
+            // static-php-cli 2.8.5 (CLI + FPM in one archive).
+            match arch {
+                "darwin-arm64" => {
+                    Some("3634d08e6d677d5bcb10b15bd9a1777ed1b0727353842e25ccf977f9e73e3e4e")
+                }
+                _ => None,
+            }
+        }),
         (
             "dnsmasq",
             "2.90",
