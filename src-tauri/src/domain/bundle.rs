@@ -112,7 +112,15 @@ pub fn catalog() -> Vec<BundleEntry> {
     // CLI's existence as the install marker and probe sbin/php-fpm separately
     // via `php_fpm_subpath_for`.
     let entries: &[(&str, &str, &str, &str, Option<&str>)] = &[
-        ("apache", "2.4.62", "Apache 2.4.62", "sbin/httpd", None),
+        ("apache", "2.4.62", "Apache 2.4.62", "sbin/httpd", {
+            // Published 2026-05-24 from forge-engines tag apache-2.4.62.
+            match arch {
+                "darwin-arm64" => {
+                    Some("6d30bcd133b56f70895ffe19cdade148a8f8b17040f2fd5253c13cbd84abf6d5")
+                }
+                _ => None,
+            }
+        }),
         (
             "dnsmasq",
             "2.90",
@@ -140,13 +148,11 @@ pub fn catalog() -> Vec<BundleEntry> {
                 _ => None,
             },
         ),
-        (
-            "openlitespeed",
-            "1.8.4",
-            "OpenLiteSpeed 1.8.4",
-            "sbin/lshttpd",
-            None,
-        ),
+        // OpenLiteSpeed deferred to V0.4 (Mode B gateway). Upstream OLS
+        // 1.8.x does not build cleanly on macOS without forking and patching
+        // the BoringSSL/dlbssl pipeline plus configure's hardcoded openssl
+        // search paths. Tracked alongside the Mode B gateway work — until
+        // then, the wizard offers nginx + apache only.
         ("php", "8.2.31", "PHP 8.2.31", "bin/php", {
             // Published 2026-05-23 from forge-engines tag php-8.2.31.
             match arch {
@@ -428,7 +434,7 @@ mod tests {
         assert!(cat.iter().any(|e| e.engine == "apache"));
         assert!(cat.iter().any(|e| e.engine == "dnsmasq"));
         assert!(cat.iter().any(|e| e.engine == "nginx"));
-        assert!(cat.iter().any(|e| e.engine == "openlitespeed"));
+        assert!(!cat.iter().any(|e| e.engine == "openlitespeed"));
         assert!(cat.iter().any(|e| e.engine == "php"));
         // The PHP bundle ships php-fpm; we don't keep a separate catalog entry.
         assert!(!cat.iter().any(|e| e.engine == "php-fpm"));
