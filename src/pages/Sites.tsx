@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, Plus, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import {
+    FolderOpen,
+    Plus,
+    Trash2,
+    AlertTriangle,
+    Loader2,
+    Link2,
+    X,
+} from 'lucide-react';
 
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -115,10 +123,19 @@ function SiteTable({
 }) {
     const { t } = useTranslation();
     const [phpLines, setPhpLines] = useState<string[]>([]);
+    const [aliasSite, setAliasSite] = useState<Site | null>(null);
 
     useEffect(() => {
         tauri.scanSystem().then((r) => setPhpLines(r.installedPhpLines ?? []));
     }, []);
+
+    useEffect(() => {
+        if (!aliasSite) return;
+        const fresh = sites.find((s) => s.id === aliasSite.id);
+        if (fresh && fresh !== aliasSite) {
+            setAliasSite(fresh);
+        }
+    }, [sites, aliasSite]);
 
     const handlePhpChange = async (siteId: number, newVersion: string) => {
         try {
@@ -145,6 +162,9 @@ function SiteTable({
                     <tr>
                         <th className="px-4 py-2 text-left font-medium">
                             {t('sites.domainHeader')}
+                        </th>
+                        <th className="px-4 py-2 text-left font-medium">
+                            {t('sites.aliasesHeader')}
                         </th>
                         <th className="px-4 py-2 text-left font-medium">
                             {t('sites.pathHeader')}
@@ -175,6 +195,20 @@ function SiteTable({
                                 >
                                     {site.domain}
                                 </a>
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                                <button
+                                    type="button"
+                                    onClick={() => setAliasSite(site)}
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-input bg-muted/40 px-2 py-1 text-left hover:bg-muted"
+                                >
+                                    <Link2 className="h-3 w-3" />
+                                    <span>
+                                        {site.aliases.length === 0
+                                            ? t('sites.aliasesEmpty')
+                                            : site.aliases.join(', ')}
+                                    </span>
+                                </button>
                             </td>
                             <td className="px-4 py-2.5 text-muted-foreground">
                                 {site.path}
@@ -236,6 +270,11 @@ function SiteTable({
                     ))}
                 </tbody>
             </table>
+            <AliasDialog
+                site={aliasSite}
+                onClose={() => setAliasSite(null)}
+                onChanged={onRefresh}
+            />
         </div>
     );
 }
@@ -443,6 +482,151 @@ function AddSiteDialog({
                     >
                         {submitting && <Loader2 className="animate-spin" />}
                         {t('sites.save')}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function AliasDialog({
+    site,
+    onClose,
+    onChanged,
+}: {
+    site: Site | null;
+    onClose: () => void;
+    onChanged: () => void;
+}) {
+    const { t } = useTranslation();
+    const [draft, setDraft] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (site) {
+            setDraft('');
+            setErr(null);
+        }
+    }, [site?.id]);
+
+    if (!site) return null;
+
+    const submitAdd = async () => {
+        const next = draft.trim().toLowerCase();
+        if (!next) return;
+        setBusy(true);
+        setErr(null);
+        try {
+            await tauri.addSiteAlias(site.id, next);
+            setDraft('');
+            onChanged();
+        } catch (e) {
+            setErr(
+                e instanceof Error && e.message
+                    ? e.message
+                    : t('sites.aliasInvalid'),
+            );
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const submitRemove = async (alias: string) => {
+        setBusy(true);
+        setErr(null);
+        try {
+            await tauri.removeSiteAlias(site.id, alias);
+            onChanged();
+        } catch (e) {
+            setErr(e instanceof Error ? e.message : t('sites.aliasInvalid'));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <Dialog
+            open={!!site}
+            onOpenChange={(o) => {
+                if (!o) onClose();
+            }}
+        >
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>
+                        {t('sites.aliasDialogTitle', { domain: site.domain })}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {t('sites.aliasDialogDescription')}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                    <div className="flex gap-2">
+                        <Input
+                            value={draft}
+                            onChange={(e) =>
+                                setDraft(
+                                    e.target.value
+                                        .toLowerCase()
+                                        .replace(/[^a-z0-9.-]+/g, ''),
+                                )
+                            }
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    void submitAdd();
+                                }
+                            }}
+                            placeholder={t('sites.aliasAddPlaceholder')}
+                        />
+                        <Button onClick={submitAdd} disabled={busy || !draft}>
+                            {busy && <Loader2 className="animate-spin" />}
+                            <Plus />
+                            {t('sites.aliasAddAction')}
+                        </Button>
+                    </div>
+
+                    {err && <p className="text-xs text-destructive">{err}</p>}
+
+                    {site.aliases.length === 0 ? (
+                        <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-xs text-muted-foreground">
+                            {t('sites.aliasNoneYet')}
+                        </p>
+                    ) : (
+                        <ul className="divide-y divide-border rounded-md border border-border">
+                            {site.aliases.map((alias) => (
+                                <li
+                                    key={alias}
+                                    className="flex items-center justify-between px-3 py-2 text-sm"
+                                >
+                                    <a
+                                        href={`http://${alias}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="font-medium hover:underline"
+                                    >
+                                        {alias}
+                                    </a>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => submitRemove(alias)}
+                                        disabled={busy}
+                                    >
+                                        <X />
+                                        {t('sites.aliasRemove')}
+                                    </Button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button variant="ghost" onClick={onClose}>
+                        {t('sites.aliasClose')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

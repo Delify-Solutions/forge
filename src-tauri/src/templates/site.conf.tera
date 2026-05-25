@@ -3,7 +3,7 @@
 
 server {
     listen 80;
-    server_name {{ site.domain }};
+    server_name {{ site.domain }}{% for alias in site.aliases %} {{ alias }}{% endfor %};
     {% if engine == "nginx" %}
     root "{{ site.document_root }}";
     index index.php index.html;

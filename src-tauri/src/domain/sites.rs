@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
@@ -12,6 +14,7 @@ pub struct Site {
     pub name: String,
     pub path: String,
     pub domain: String,
+    pub aliases: Vec<String>,
     pub php_version: String,
     pub web_server: String,
     pub created_at: String,
@@ -59,20 +62,21 @@ pub async fn list(pool: &SqlitePool) -> ForgeResult<Vec<Site>> {
     .await
     .map_err(|e| ForgeError::Other(format!("list sites: {e}")))?;
 
-    Ok(rows
-        .into_iter()
-        .map(
-            |(id, name, path, php_version, web_server, created_at)| Site {
-                domain: format!("{name}.test"),
-                id,
-                name,
-                path,
-                php_version,
-                web_server,
-                created_at,
-            },
-        )
-        .collect())
+    let mut sites = Vec::with_capacity(rows.len());
+    for (id, name, path, php_version, web_server, created_at) in rows {
+        let aliases = fetch_aliases(pool, id).await?;
+        sites.push(Site {
+            domain: format!("{name}.test"),
+            aliases,
+            id,
+            name,
+            path,
+            php_version,
+            web_server,
+            created_at,
+        });
+    }
+    Ok(sites)
 }
 
 pub async fn add(pool: &SqlitePool, req: AddSiteRequest) -> ForgeResult<Site> {
@@ -112,23 +116,7 @@ pub async fn add(pool: &SqlitePool, req: AddSiteRequest) -> ForgeResult<Site> {
 
     write_default_landing(path, &req.name);
 
-    let row = sqlx::query_as::<_, (i64, String, String, String, String, String)>(
-        "SELECT id, name, path, php_version, web_server, created_at FROM sites WHERE id = ?",
-    )
-    .bind(id)
-    .fetch_one(pool)
-    .await
-    .map_err(|e| ForgeError::Other(format!("fetch added site: {e}")))?;
-
-    Ok(Site {
-        domain: format!("{}.test", row.1),
-        id: row.0,
-        name: row.1,
-        path: row.2,
-        php_version: row.3,
-        web_server: row.4,
-        created_at: row.5,
-    })
+    fetch_site(pool, id).await
 }
 
 const LANDING_TEMPLATE: &str = include_str!("../templates/landing.php");
@@ -215,23 +203,7 @@ pub async fn update_php_version(
         return Err(ForgeError::Other(format!("site {id} not found")));
     }
 
-    let row = sqlx::query_as::<_, (i64, String, String, String, String, String)>(
-        "SELECT id, name, path, php_version, web_server, created_at FROM sites WHERE id = ?",
-    )
-    .bind(id)
-    .fetch_one(pool)
-    .await
-    .map_err(|e| ForgeError::Other(format!("fetch updated site: {e}")))?;
-
-    Ok(Site {
-        domain: format!("{}.test", row.1),
-        id: row.0,
-        name: row.1,
-        path: row.2,
-        php_version: row.3,
-        web_server: row.4,
-        created_at: row.5,
-    })
+    fetch_site(pool, id).await
 }
 
 pub async fn update_web_server(pool: &SqlitePool, id: i64, web_server: &str) -> ForgeResult<Site> {
@@ -248,16 +220,61 @@ pub async fn update_web_server(pool: &SqlitePool, id: i64, web_server: &str) -> 
         return Err(ForgeError::Other(format!("site {id} not found")));
     }
 
+    fetch_site(pool, id).await
+}
+
+pub async fn add_alias(pool: &SqlitePool, site_id: i64, alias: &str) -> ForgeResult<Site> {
+    let site = fetch_site(pool, site_id).await?;
+    let normalized = alias.trim().to_ascii_lowercase();
+    let taken = collect_taken_domains(pool).await?;
+    validate_alias(&normalized, &site, &taken)?;
+
+    sqlx::query("INSERT INTO site_domains (site_id, domain, is_alias) VALUES (?, ?, 1)")
+        .bind(site_id)
+        .bind(&normalized)
+        .execute(pool)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(db) if db.is_unique_violation() => {
+                ForgeError::Other(format!("domain '{normalized}' already exists"))
+            }
+            other => ForgeError::Other(format!("add alias: {other}")),
+        })?;
+
+    fetch_site(pool, site_id).await
+}
+
+pub async fn remove_alias(pool: &SqlitePool, site_id: i64, alias: &str) -> ForgeResult<Site> {
+    let normalized = alias.trim().to_ascii_lowercase();
+    let result = sqlx::query("DELETE FROM site_domains WHERE site_id = ? AND domain = ?")
+        .bind(site_id)
+        .bind(&normalized)
+        .execute(pool)
+        .await
+        .map_err(|e| ForgeError::Other(format!("remove alias: {e}")))?;
+
+    if result.rows_affected() == 0 {
+        return Err(ForgeError::Other(format!(
+            "alias '{normalized}' not found for site {site_id}"
+        )));
+    }
+
+    fetch_site(pool, site_id).await
+}
+
+async fn fetch_site(pool: &SqlitePool, id: i64) -> ForgeResult<Site> {
     let row = sqlx::query_as::<_, (i64, String, String, String, String, String)>(
         "SELECT id, name, path, php_version, web_server, created_at FROM sites WHERE id = ?",
     )
     .bind(id)
     .fetch_one(pool)
     .await
-    .map_err(|e| ForgeError::Other(format!("fetch updated site: {e}")))?;
+    .map_err(|e| ForgeError::Other(format!("fetch site {id}: {e}")))?;
 
+    let aliases = fetch_aliases(pool, row.0).await?;
     Ok(Site {
         domain: format!("{}.test", row.1),
+        aliases,
         id: row.0,
         name: row.1,
         path: row.2,
@@ -265,6 +282,80 @@ pub async fn update_web_server(pool: &SqlitePool, id: i64, web_server: &str) -> 
         web_server: row.4,
         created_at: row.5,
     })
+}
+
+async fn fetch_aliases(pool: &SqlitePool, site_id: i64) -> ForgeResult<Vec<String>> {
+    let rows = sqlx::query_as::<_, (String,)>(
+        "SELECT domain FROM site_domains WHERE site_id = ? ORDER BY domain ASC",
+    )
+    .bind(site_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| ForgeError::Other(format!("list aliases for site {site_id}: {e}")))?;
+
+    Ok(rows.into_iter().map(|(d,)| d).collect())
+}
+
+async fn collect_taken_domains(pool: &SqlitePool) -> ForgeResult<HashSet<String>> {
+    let mut taken: HashSet<String> = HashSet::new();
+    let names = sqlx::query_as::<_, (String,)>("SELECT name FROM sites")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| ForgeError::Other(format!("collect site names: {e}")))?;
+    for (name,) in names {
+        taken.insert(format!("{name}.test"));
+    }
+
+    let domains = sqlx::query_as::<_, (String,)>("SELECT domain FROM site_domains")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| ForgeError::Other(format!("collect site_domains: {e}")))?;
+    for (d,) in domains {
+        taken.insert(d);
+    }
+
+    Ok(taken)
+}
+
+fn validate_alias(alias: &str, site: &Site, taken: &HashSet<String>) -> ForgeResult<()> {
+    if !alias.ends_with(".test") {
+        return Err(ForgeError::Other("alias must end in .test".into()));
+    }
+    let host = alias.trim_end_matches(".test");
+    if host.is_empty() {
+        return Err(ForgeError::Other("alias has no labels before .test".into()));
+    }
+    for label in host.split('.') {
+        if label.is_empty() || label.len() > 63 {
+            return Err(ForgeError::Other(
+                "alias label must be 1-63 characters".into(),
+            ));
+        }
+        if label.starts_with('-') || label.ends_with('-') {
+            return Err(ForgeError::Other(
+                "alias label cannot start or end with '-'".into(),
+            ));
+        }
+        let valid = label
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if !valid {
+            return Err(ForgeError::Other(
+                "alias label must be lowercase letters, digits, or '-'".into(),
+            ));
+        }
+    }
+    if alias == site.domain {
+        return Err(ForgeError::Other(
+            "alias cannot equal the primary domain".into(),
+        ));
+    }
+    if taken.contains(alias) {
+        return Err(ForgeError::Other(format!(
+            "domain '{alias}' is already in use"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -359,5 +450,51 @@ mod tests {
         assert!(validate_web_server("iis").is_err());
         assert!(validate_web_server("Nginx").is_err());
         assert!(validate_web_server("ngnix").is_err());
+    }
+
+    fn sample_site() -> Site {
+        Site {
+            id: 1,
+            name: "myapp".into(),
+            path: "/tmp/myapp".into(),
+            domain: "myapp.test".into(),
+            aliases: vec![],
+            php_version: "8.3".into(),
+            web_server: "nginx".into(),
+            created_at: "2026-05-26".into(),
+        }
+    }
+
+    #[test]
+    fn accepts_valid_aliases() {
+        let site = sample_site();
+        let taken = HashSet::from(["myapp.test".to_string()]);
+
+        assert!(validate_alias("admin.myapp.test", &site, &taken).is_ok());
+        assert!(validate_alias("api.myapp.test", &site, &taken).is_ok());
+        assert!(validate_alias("foo-bar.test", &site, &taken).is_ok());
+        assert!(validate_alias("a.b.c.test", &site, &taken).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_aliases() {
+        let site = sample_site();
+        let taken = HashSet::from([
+            "myapp.test".to_string(),
+            "shopgame.test".to_string(),
+            "blog.myapp.test".to_string(),
+        ]);
+
+        assert!(validate_alias("admin.myapp.dev", &site, &taken).is_err());
+        assert!(validate_alias(".test", &site, &taken).is_err());
+        assert!(validate_alias("Admin.myapp.test", &site, &taken).is_err());
+        assert!(validate_alias("admin_panel.myapp.test", &site, &taken).is_err());
+        assert!(validate_alias("-bad.myapp.test", &site, &taken).is_err());
+        assert!(validate_alias("bad-.myapp.test", &site, &taken).is_err());
+        assert!(validate_alias("myapp.test", &site, &taken).is_err());
+        assert!(validate_alias("blog.myapp.test", &site, &taken).is_err());
+        assert!(validate_alias("shopgame.test", &site, &taken).is_err());
+        let long_label = format!("{}.myapp.test", "a".repeat(64));
+        assert!(validate_alias(&long_label, &site, &taken).is_err());
     }
 }

@@ -30,6 +30,10 @@ export const tauri = {
         invoke<Site>('update_site_php', { id, phpVersion }),
     updateSiteWebServer: (id: number, webServer: string) =>
         invoke<Site>('update_site_web_server', { id, webServer }),
+    addSiteAlias: (id: number, domain: string) =>
+        invoke<Site>('add_site_alias', { id, domain }),
+    removeSiteAlias: (id: number, domain: string) =>
+        invoke<Site>('remove_site_alias', { id, domain }),
     listBundles: () => invoke<BundleEntry[]>('list_bundles'),
     installBundle: (
         engine: string,

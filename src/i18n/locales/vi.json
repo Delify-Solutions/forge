@@ -125,6 +125,17 @@
         "engineOls": "OpenLiteSpeed",
         "save": "Lưu",
         "cancel": "Huỷ",
-        "loading": "Đang tải sites…"
+        "loading": "Đang tải sites…",
+        "aliasesHeader": "Bí danh",
+        "aliasesEmpty": "—",
+        "aliasManageAction": "Quản lý",
+        "aliasDialogTitle": "Bí danh cho {{domain}}",
+        "aliasDialogDescription": "Thêm các tên miền .test phụ trỏ về site này. Tên miền chính giữ nguyên.",
+        "aliasAddPlaceholder": "alias.test",
+        "aliasAddAction": "Thêm bí danh",
+        "aliasRemove": "Xoá",
+        "aliasInvalid": "Bí danh phải kết thúc bằng .test, chỉ dùng chữ thường, số hoặc dấu gạch ngang, và không trùng host hiện có.",
+        "aliasNoneYet": "Chưa có bí danh nào.",
+        "aliasClose": "Đóng"
     }
 }

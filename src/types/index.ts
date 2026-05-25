@@ -5,6 +5,7 @@ export interface Site {
     name: string;
     path: string;
     domain: string;
+    aliases: string[];
     phpVersion: string;
     webServer: WebServer;
     createdAt: string;

@@ -28,6 +28,7 @@ struct SiteCtx {
     path: String,
     document_root: String,
     domain: String,
+    aliases: Vec<String>,
 }
 
 impl From<Site> for SiteCtx {
@@ -38,6 +39,7 @@ impl From<Site> for SiteCtx {
             path: s.path,
             document_root: document_root.to_string_lossy().to_string(),
             domain: s.domain,
+            aliases: s.aliases,
         }
     }
 }
@@ -273,7 +275,7 @@ mod tests {
         assert!(rendered.contains("listen 80 default_server;"));
         assert!(rendered.contains("daemon off;"));
 
-        // Per-site config (nginx engine).
+        // Per-site config (nginx engine, with aliases).
         let mut site_ctx = Context::new();
         site_ctx.insert(
             "site",
@@ -282,6 +284,10 @@ mod tests {
                 path: "/Users/me/Code/myapp".to_string(),
                 document_root: "/Users/me/Code/myapp/public".to_string(),
                 domain: "myapp.test".to_string(),
+                aliases: vec![
+                    "staging.myapp.test".to_string(),
+                    "old-myapp.test".to_string(),
+                ],
             },
         );
         site_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
@@ -293,7 +299,7 @@ mod tests {
         let rendered = tera
             .render("site.conf.tera", &site_ctx)
             .expect("site config renders");
-        assert!(rendered.contains("server_name myapp.test;"));
+        assert!(rendered.contains("server_name myapp.test staging.myapp.test old-myapp.test;"));
         assert!(rendered.contains("root \"/Users/me/Code/myapp/public\";"));
         assert!(rendered.contains("fastcgi_pass \"unix:/tmp/forge/php.sock\";"));
         assert!(!rendered.contains("proxy_pass"));
@@ -307,6 +313,7 @@ mod tests {
                 path: "/Users/me/Code/blog".to_string(),
                 document_root: "/Users/me/Code/blog/public".to_string(),
                 domain: "blog.test".to_string(),
+                aliases: Vec::new(),
             },
         );
         apache_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
@@ -332,6 +339,7 @@ mod tests {
                 path: "/Users/me/Code/shop".to_string(),
                 document_root: "/Users/me/Code/shop/public".to_string(),
                 domain: "shop.test".to_string(),
+                aliases: Vec::new(),
             },
         );
         ols_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");

@@ -125,6 +125,17 @@
         "engineOls": "OpenLiteSpeed",
         "save": "Save",
         "cancel": "Cancel",
-        "loading": "Loading sites…"
+        "loading": "Loading sites…",
+        "aliasesHeader": "Aliases",
+        "aliasesEmpty": "—",
+        "aliasManageAction": "Manage",
+        "aliasDialogTitle": "Aliases for {{domain}}",
+        "aliasDialogDescription": "Add extra .test hostnames that point to this site. Primary domain stays untouched.",
+        "aliasAddPlaceholder": "alias.test",
+        "aliasAddAction": "Add alias",
+        "aliasRemove": "Remove",
+        "aliasInvalid": "Alias must end in .test, use lowercase letters, digits, or dashes, and not duplicate an existing host.",
+        "aliasNoneYet": "No aliases yet.",
+        "aliasClose": "Close"
     }
 }

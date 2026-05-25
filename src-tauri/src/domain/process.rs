@@ -23,12 +23,7 @@ fn disclaim_trampoline() -> Option<PathBuf> {
         dir.join("../Resources/forge-disclaim"),
         dir.join("../Resources/_up_/forge-disclaim"),
     ];
-    for c in candidates {
-        if c.is_file() {
-            return Some(c);
-        }
-    }
-    None
+    candidates.into_iter().find(|c| c.is_file())
 }
 
 #[cfg(not(target_os = "macos"))]

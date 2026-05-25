@@ -73,7 +73,7 @@ fn main() -> ExitCode {
 
         let sym = libc::dlsym(
             libc::RTLD_DEFAULT,
-            b"responsibility_spawnattrs_setdisclaim\0".as_ptr() as *const c_char,
+            c"responsibility_spawnattrs_setdisclaim".as_ptr() as *const c_char,
         );
         if !sym.is_null() {
             let f: DisclaimFn = std::mem::transmute(sym);

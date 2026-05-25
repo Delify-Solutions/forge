@@ -48,6 +48,28 @@ pub async fn update_site_web_server(
     Ok(site)
 }
 
+#[tauri::command]
+pub async fn add_site_alias(
+    state: State<'_, AppState>,
+    id: i64,
+    domain: String,
+) -> ForgeResult<Site> {
+    let site = sites::add_alias(&state.pool, id, &domain).await?;
+    let _ = try_reload(&state.pool, &state.supervisor).await;
+    Ok(site)
+}
+
+#[tauri::command]
+pub async fn remove_site_alias(
+    state: State<'_, AppState>,
+    id: i64,
+    domain: String,
+) -> ForgeResult<Site> {
+    let site = sites::remove_alias(&state.pool, id, &domain).await?;
+    let _ = try_reload(&state.pool, &state.supervisor).await;
+    Ok(site)
+}
+
 async fn try_reload(pool: &sqlx::SqlitePool, supervisor: &ProcessSupervisor) -> ForgeResult<()> {
     let status = supervisor.status(nginx::NGINX_PROCESS).await;
     if matches!(status.state, crate::domain::process::ProcessState::Running) {
