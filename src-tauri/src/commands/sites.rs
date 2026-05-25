@@ -108,14 +108,14 @@ pub async fn tail_site_logs(state: State<'_, AppState>, id: i64) -> ForgeResult<
     let error_path = logs_dir.join(format!("{}.error.log", site.name));
     let access_path = logs_dir.join(format!("{}.access.log", site.name));
 
-    let (error, error_missing) = logs::tail_lines(&error_path, 200);
-    let (access, access_missing) = logs::tail_lines(&access_path, 200);
+    let error_result = logs::tail_lines(&error_path, 200)?;
+    let access_result = logs::tail_lines(&access_path, 200)?;
 
     Ok(SiteLogsTail {
-        error,
-        access,
-        error_missing,
-        access_missing,
+        error: error_result.lines,
+        access: access_result.lines,
+        error_missing: error_result.missing,
+        access_missing: access_result.missing,
     })
 }
 

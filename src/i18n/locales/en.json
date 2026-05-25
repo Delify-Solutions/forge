@@ -149,6 +149,9 @@
         "logsRefresh": "Refresh",
         "logsClose": "Close",
         "logsLoading": "Loading logs…",
-        "editorNone": "No editor found. Install VS Code (`code`), Cursor, or Sublime (`subl`)."
+        "editorNone": "No editor found. Install VS Code (`code`), Cursor, or Sublime (`subl`).",
+        "searchPlaceholder": "Search sites…",
+        "searchClear": "Clear search",
+        "searchNoMatches": "No sites match \"{{query}}\"."
     }
 }

@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Changed
 - Clippy-clean codebase: `process::disclaim_trampoline` uses `Iterator::find`, and `forge-disclaim` uses a `c"..."` literal for the dlsym name.
+- Sites page now includes a case-insensitive search field for names, domains, paths, and aliases.
+- Logs dialog tabs now follow the ARIA tab pattern with keyboard navigation and a focusable panel.
+- Log tailing now distinguishes missing files from permission, seek, and read errors so unreadable logs are surfaced to users.
 
 ## [0.0.2-mvp] — 2026-05-26
 

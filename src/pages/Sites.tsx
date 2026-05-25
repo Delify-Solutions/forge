@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import {
@@ -8,6 +8,7 @@ import {
     Globe,
     Loader2,
     Plus,
+    Search,
     Trash2,
     AlertTriangle,
     Link2,
@@ -35,6 +36,16 @@ export function Sites() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    const filteredSites = normalizedSearch
+        ? sites.filter((site) =>
+              [site.name, site.domain, site.path, ...site.aliases].some((value) =>
+                  value.toLowerCase().includes(normalizedSearch),
+              ),
+          )
+        : sites;
 
     const refresh = async () => {
         setLoading(true);
@@ -62,15 +73,37 @@ export function Sites() {
     };
     return (
         <div>
-            <div className="mb-6 flex items-start justify-between">
+            <div className="mb-6 flex items-start justify-between gap-4">
                 <PageHeader
                     title={t('sites.title')}
                     description={t('sites.subtitle')}
                 />
-                <Button onClick={() => setDialogOpen(true)}>
-                    <Plus />
-                    {t('sites.addButton')}
-                </Button>
+                <div className="flex items-center gap-2">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder={t('sites.searchPlaceholder')}
+                            className="w-64 pl-9 pr-8"
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground"
+                                title={t('sites.searchClear')}
+                                aria-label={t('sites.searchClear')}
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
+                    <Button onClick={() => setDialogOpen(true)}>
+                        <Plus />
+                        {t('sites.addButton')}
+                    </Button>
+                </div>
             </div>
 
             {error && (
@@ -87,8 +120,16 @@ export function Sites() {
                 </div>
             ) : sites.length === 0 ? (
                 <EmptyState onAdd={() => setDialogOpen(true)} />
+            ) : filteredSites.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
+                    {t('sites.searchNoMatches', { query: searchQuery.trim() })}
+                </p>
             ) : (
-                <SiteTable sites={sites} onRemove={onRemove} onRefresh={refresh} />
+                <SiteTable
+                    sites={filteredSites}
+                    onRemove={onRemove}
+                    onRefresh={refresh}
+                />
             )}
 
             <AddSiteDialog
@@ -391,6 +432,8 @@ function LogsDialog({
     const [logs, setLogs] = useState<SiteLogsTail | null>(null);
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState<string | null>(null);
+    const errorTabRef = useRef<HTMLButtonElement>(null);
+    const accessTabRef = useRef<HTMLButtonElement>(null);
 
     const loadLogs = async (siteId: number) => {
         setLoading(true);
@@ -416,6 +459,19 @@ function LogsDialog({
     const lines = activeTab === 'error' ? logs?.error : logs?.access;
     const missing = activeTab === 'error' ? logs?.errorMissing : logs?.accessMissing;
 
+    const handleTabKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+
+        e.preventDefault();
+        const nextTab = activeTab === 'error' ? 'access' : 'error';
+        setActiveTab(nextTab);
+        if (nextTab === 'error') {
+            errorTabRef.current?.focus();
+        } else {
+            accessTabRef.current?.focus();
+        }
+    };
+
     return (
         <Dialog
             open={!!site}
@@ -433,9 +489,19 @@ function LogsDialog({
 
                 <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
-                        <div className="inline-flex rounded-md border border-input bg-muted/40 p-1 text-xs">
+                        <div
+                            role="tablist"
+                            aria-label="Log type"
+                            className="inline-flex rounded-md border border-input bg-muted/40 p-1 text-xs"
+                            onKeyDown={handleTabKeyDown}
+                        >
                             <button
+                                ref={errorTabRef}
                                 type="button"
+                                role="tab"
+                                id="logs-tab-error"
+                                aria-selected={activeTab === 'error'}
+                                tabIndex={activeTab === 'error' ? 0 : -1}
                                 onClick={() => setActiveTab('error')}
                                 className={`rounded px-3 py-1.5 ${
                                     activeTab === 'error'
@@ -446,7 +512,12 @@ function LogsDialog({
                                 {t('sites.logsTabError')}
                             </button>
                             <button
+                                ref={accessTabRef}
                                 type="button"
+                                role="tab"
+                                id="logs-tab-access"
+                                aria-selected={activeTab === 'access'}
+                                tabIndex={activeTab === 'access' ? 0 : -1}
                                 onClick={() => setActiveTab('access')}
                                 className={`rounded px-3 py-1.5 ${
                                     activeTab === 'access'
@@ -484,15 +555,30 @@ function LogsDialog({
                             {t('sites.logsLoading')}
                         </div>
                     ) : missing ? (
-                        <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-sm text-muted-foreground">
+                        <p
+                            role="tabpanel"
+                            aria-labelledby={`logs-tab-${activeTab}`}
+                            tabIndex={0}
+                            className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-sm text-muted-foreground"
+                        >
                             {t('sites.logsMissing')}
                         </p>
                     ) : !lines || lines.length === 0 ? (
-                        <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-sm text-muted-foreground">
+                        <p
+                            role="tabpanel"
+                            aria-labelledby={`logs-tab-${activeTab}`}
+                            tabIndex={0}
+                            className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-sm text-muted-foreground"
+                        >
                             {t('sites.logsEmpty')}
                         </p>
                     ) : (
-                        <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 font-mono text-xs leading-relaxed text-foreground">
+                        <pre
+                            role="tabpanel"
+                            aria-labelledby={`logs-tab-${activeTab}`}
+                            tabIndex={0}
+                            className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 font-mono text-xs leading-relaxed text-foreground"
+                        >
                             {lines.join('\n')}
                         </pre>
                     )}

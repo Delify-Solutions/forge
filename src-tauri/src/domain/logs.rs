@@ -3,35 +3,51 @@
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
+use crate::error::{ForgeError, ForgeResult};
+
 const MAX_READ_BYTES: u64 = 1024 * 1024; // 1 MiB
+
+/// Result of a `tail_lines` call.
+pub struct TailResult {
+    pub lines: Vec<String>,
+    /// `true` only when the file does not exist (NotFound). Never `true` for
+    /// permission or other I/O errors — those surface as `Err`.
+    pub missing: bool,
+}
 
 /// Read the last `n` lines from `path`.
 ///
-/// Returns `(lines, missing)`. When the file does not exist `missing` is true
-/// and the line vec is empty. A trailing empty line produced by a final newline
-/// is dropped.
-pub fn tail_lines(path: &Path, n: usize) -> (Vec<String>, bool) {
+/// - File missing → `Ok(TailResult { lines: [], missing: true })`.
+/// - Any other I/O error → `Err(ForgeError::Other(...))`.
+/// - Success → `Ok(TailResult { lines: ..., missing: false })`.
+///
+/// A trailing empty line produced by a final newline is dropped.
+pub fn tail_lines(path: &Path, n: usize) -> ForgeResult<TailResult> {
     let mut file = match std::fs::File::open(path) {
         Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (vec![], true),
-        Err(_) => return (vec![], true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(TailResult {
+                lines: vec![],
+                missing: true,
+            });
+        }
+        Err(e) => {
+            return Err(ForgeError::Other(format!("read {}: {}", path.display(), e)));
+        }
     };
 
-    let file_len = match file.seek(SeekFrom::End(0)) {
-        Ok(len) => len,
-        Err(_) => return (vec![], false),
-    };
+    let file_len = file
+        .seek(SeekFrom::End(0))
+        .map_err(|e| ForgeError::Other(format!("read {}: {}", path.display(), e)))?;
 
     let read_from = file_len.saturating_sub(MAX_READ_BYTES);
 
-    if file.seek(SeekFrom::Start(read_from)).is_err() {
-        return (vec![], false);
-    }
+    file.seek(SeekFrom::Start(read_from))
+        .map_err(|e| ForgeError::Other(format!("read {}: {}", path.display(), e)))?;
 
     let mut buf = String::new();
-    if file.read_to_string(&mut buf).is_err() {
-        return (vec![], false);
-    }
+    file.read_to_string(&mut buf)
+        .map_err(|e| ForgeError::Other(format!("read {}: {}", path.display(), e)))?;
 
     // Drop trailing empty line from a final newline.
     if buf.ends_with('\n') {
@@ -44,7 +60,10 @@ pub fn tail_lines(path: &Path, n: usize) -> (Vec<String>, bool) {
     let lines: Vec<String> = buf.lines().map(|l| l.to_string()).collect();
     let total = lines.len();
     let start = total.saturating_sub(n);
-    (lines[start..].to_vec(), false)
+    Ok(TailResult {
+        lines: lines[start..].to_vec(),
+        missing: false,
+    })
 }
 
 /// Walk `candidates` in order and return the first one whose binary exists on
@@ -94,27 +113,42 @@ mod tests {
     #[test]
     fn empty_file_returns_empty_vec() {
         let p = write_tmp("");
-        let (lines, missing) = tail_lines(&p, 10);
-        assert!(!missing);
-        assert!(lines.is_empty());
+        let result = tail_lines(&p, 10).unwrap();
+        assert!(!result.missing);
+        assert!(result.lines.is_empty());
         std::fs::remove_file(p).ok();
     }
 
     #[test]
     fn missing_file_returns_missing_true() {
         let p = std::path::PathBuf::from("/tmp/forge-nonexistent-log-file-xyz.log");
-        let (lines, missing) = tail_lines(&p, 10);
-        assert!(missing);
-        assert!(lines.is_empty());
+        let result = tail_lines(&p, 10).unwrap();
+        assert!(result.missing);
+        assert!(result.lines.is_empty());
+    }
+
+    #[test]
+    fn directory_path_returns_err() {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-tail-dir-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let result = tail_lines(&dir, 5);
+        assert!(result.is_err());
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]
     fn fewer_than_n_lines_returns_all() {
         let content = "line1\nline2\nline3\n";
         let p = write_tmp(content);
-        let (lines, missing) = tail_lines(&p, 10);
-        assert!(!missing);
-        assert_eq!(lines, vec!["line1", "line2", "line3"]);
+        let result = tail_lines(&p, 10).unwrap();
+        assert!(!result.missing);
+        assert_eq!(result.lines, vec!["line1", "line2", "line3"]);
         std::fs::remove_file(p).ok();
     }
 
@@ -122,11 +156,11 @@ mod tests {
     fn more_than_n_lines_returns_last_n() {
         let content: String = (1..=20).map(|i| format!("line{i}\n")).collect();
         let p = write_tmp(&content);
-        let (lines, missing) = tail_lines(&p, 5);
-        assert!(!missing);
-        assert_eq!(lines.len(), 5);
-        assert_eq!(lines[0], "line16");
-        assert_eq!(lines[4], "line20");
+        let result = tail_lines(&p, 5).unwrap();
+        assert!(!result.missing);
+        assert_eq!(result.lines.len(), 5);
+        assert_eq!(result.lines[0], "line16");
+        assert_eq!(result.lines[4], "line20");
         std::fs::remove_file(p).ok();
     }
 
@@ -139,9 +173,9 @@ mod tests {
         let content: String = (0..11_000).map(|_| format!("{line}\n")).collect();
         assert!(content.len() > 1024 * 1024, "test data must exceed 1 MiB");
         let p = write_tmp(&content);
-        let (lines, missing) = tail_lines(&p, 200);
-        assert!(!missing);
-        assert_eq!(lines.len(), 200);
+        let result = tail_lines(&p, 200).unwrap();
+        assert!(!result.missing);
+        assert_eq!(result.lines.len(), 200);
         std::fs::remove_file(p).ok();
     }
 

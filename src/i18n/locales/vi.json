@@ -149,6 +149,9 @@
         "logsRefresh": "Làm mới",
         "logsClose": "Đóng",
         "logsLoading": "Đang tải logs…",
-        "editorNone": "Không tìm thấy editor. Cài VS Code (`code`), Cursor hoặc Sublime (`subl`)."
+        "editorNone": "Không tìm thấy editor. Cài VS Code (`code`), Cursor hoặc Sublime (`subl`).",
+        "searchPlaceholder": "Tìm site…",
+        "searchClear": "Xoá tìm kiếm",
+        "searchNoMatches": "Không có site nào khớp \"{{query}}\"."
     }
 }
