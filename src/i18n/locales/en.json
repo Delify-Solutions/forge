@@ -136,6 +136,19 @@
         "aliasRemove": "Remove",
         "aliasInvalid": "Alias must end in .test, use lowercase letters, digits, or dashes, and not duplicate an existing host.",
         "aliasNoneYet": "No aliases yet.",
-        "aliasClose": "Close"
+        "aliasClose": "Close",
+        "actionOpen": "Open",
+        "actionReveal": "Reveal",
+        "actionEditor": "Editor",
+        "actionLogs": "Logs",
+        "logsDialogTitle": "Logs for {{domain}}",
+        "logsTabError": "Error log",
+        "logsTabAccess": "Access log",
+        "logsEmpty": "No log entries yet.",
+        "logsMissing": "Log file does not exist yet.",
+        "logsRefresh": "Refresh",
+        "logsClose": "Close",
+        "logsLoading": "Loading logs…",
+        "editorNone": "No editor found. Install VS Code (`code`), Cursor, or Sublime (`subl`)."
     }
 }

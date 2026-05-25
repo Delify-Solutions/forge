@@ -136,6 +136,19 @@
         "aliasRemove": "Xoá",
         "aliasInvalid": "Bí danh phải kết thúc bằng .test, chỉ dùng chữ thường, số hoặc dấu gạch ngang, và không trùng host hiện có.",
         "aliasNoneYet": "Chưa có bí danh nào.",
-        "aliasClose": "Đóng"
+        "aliasClose": "Đóng",
+        "actionOpen": "Mở",
+        "actionReveal": "Mở thư mục",
+        "actionEditor": "Editor",
+        "actionLogs": "Logs",
+        "logsDialogTitle": "Logs cho {{domain}}",
+        "logsTabError": "Error log",
+        "logsTabAccess": "Access log",
+        "logsEmpty": "Chưa có log nào.",
+        "logsMissing": "Chưa có file log.",
+        "logsRefresh": "Làm mới",
+        "logsClose": "Đóng",
+        "logsLoading": "Đang tải logs…",
+        "editorNone": "Không tìm thấy editor. Cài VS Code (`code`), Cursor hoặc Sublime (`subl`)."
     }
 }

@@ -70,3 +70,10 @@ export type InstallProgress =
     | { kind: 'extracting' }
     | { kind: 'done'; installPath: string }
     | { kind: 'failed'; message: string };
+
+export interface SiteLogsTail {
+    error: string[];
+    access: string[];
+    errorMissing: boolean;
+    accessMissing: boolean;
+}

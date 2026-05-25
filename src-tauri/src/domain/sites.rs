@@ -262,7 +262,7 @@ pub async fn remove_alias(pool: &SqlitePool, site_id: i64, alias: &str) -> Forge
     fetch_site(pool, site_id).await
 }
 
-async fn fetch_site(pool: &SqlitePool, id: i64) -> ForgeResult<Site> {
+pub async fn fetch_site(pool: &SqlitePool, id: i64) -> ForgeResult<Site> {
     let row = sqlx::query_as::<_, (i64, String, String, String, String, String)>(
         "SELECT id, name, path, php_version, web_server, created_at FROM sites WHERE id = ?",
     )

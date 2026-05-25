@@ -2,6 +2,7 @@
 
 pub mod bundle;
 pub mod dns;
+pub mod logs;
 pub mod nginx;
 pub mod php;
 pub mod process;

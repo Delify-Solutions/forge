@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import {
+    Code,
+    FileText,
     FolderOpen,
+    Globe,
+    Loader2,
     Plus,
     Trash2,
     AlertTriangle,
-    Loader2,
     Link2,
     X,
+    RefreshCw,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/PageHeader';
@@ -23,7 +27,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { tauri } from '@/lib/tauri';
-import type { Site, WebServer } from '@/types';
+import type { Site, SiteLogsTail, WebServer } from '@/types';
 
 export function Sites() {
     const { t } = useTranslation();
@@ -124,6 +128,8 @@ function SiteTable({
     const { t } = useTranslation();
     const [phpLines, setPhpLines] = useState<string[]>([]);
     const [aliasSite, setAliasSite] = useState<Site | null>(null);
+    const [logsSite, setLogsSite] = useState<Site | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
 
     useEffect(() => {
         tauri.scanSystem().then((r) => setPhpLines(r.installedPhpLines ?? []));
@@ -136,6 +142,14 @@ function SiteTable({
             setAliasSite(fresh);
         }
     }, [sites, aliasSite]);
+
+    useEffect(() => {
+        if (!logsSite) return;
+        const fresh = sites.find((s) => s.id === logsSite.id);
+        if (fresh && fresh !== logsSite) {
+            setLogsSite(fresh);
+        }
+    }, [sites, logsSite]);
 
     const handlePhpChange = async (siteId: number, newVersion: string) => {
         try {
@@ -155,129 +169,345 @@ function SiteTable({
         }
     };
 
+    const runAction = async (action: () => Promise<void>) => {
+        setActionError(null);
+        try {
+            await action();
+        } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            setActionError(
+                message.includes('No editor found')
+                    ? t('sites.editorNone')
+                    : message || 'Action failed.',
+            );
+        }
+    };
+
     return (
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-            <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                        <th className="px-4 py-2 text-left font-medium">
-                            {t('sites.domainHeader')}
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium">
-                            {t('sites.aliasesHeader')}
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium">
-                            {t('sites.pathHeader')}
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium">
-                            {t('sites.phpHeader')}
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium">
-                            {t('sites.engineHeader')}
-                        </th>
-                        <th className="px-4 py-2 text-right font-medium">
-                            {t('sites.actionsHeader')}
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {sites.map((site) => (
-                        <tr
-                            key={site.id}
-                            className="border-t border-border last:border-b-0"
-                        >
-                            <td className="px-4 py-2.5 font-medium">
-                                <a
-                                    href={`http://${site.domain}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="hover:underline"
-                                >
-                                    {site.domain}
-                                </a>
-                            </td>
-                            <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                                <button
-                                    type="button"
-                                    onClick={() => setAliasSite(site)}
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-input bg-muted/40 px-2 py-1 text-left hover:bg-muted"
-                                >
-                                    <Link2 className="h-3 w-3" />
-                                    <span>
-                                        {site.aliases.length === 0
-                                            ? t('sites.aliasesEmpty')
-                                            : site.aliases.join(', ')}
-                                    </span>
-                                </button>
-                            </td>
-                            <td className="px-4 py-2.5 text-muted-foreground">
-                                {site.path}
-                            </td>
-                            <td className="px-4 py-2.5 text-muted-foreground">
-                                {phpLines.length > 0 ? (
+        <div className="space-y-3">
+            {actionError && (
+                <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+                    <span className="text-foreground">{actionError}</span>
+                </div>
+            )}
+            <div className="overflow-hidden rounded-lg border border-border bg-card">
+                <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+                        <tr>
+                            <th className="px-4 py-2 text-left font-medium">
+                                {t('sites.domainHeader')}
+                            </th>
+                            <th className="px-4 py-2 text-left font-medium">
+                                {t('sites.aliasesHeader')}
+                            </th>
+                            <th className="px-4 py-2 text-left font-medium">
+                                {t('sites.pathHeader')}
+                            </th>
+                            <th className="px-4 py-2 text-left font-medium">
+                                {t('sites.phpHeader')}
+                            </th>
+                            <th className="px-4 py-2 text-left font-medium">
+                                {t('sites.engineHeader')}
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium">
+                                {t('sites.actionsHeader')}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {sites.map((site) => (
+                            <tr
+                                key={site.id}
+                                className="border-t border-border last:border-b-0"
+                            >
+                                <td className="px-4 py-2.5 font-medium">
+                                    <a
+                                        href={`http://${site.domain}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="hover:underline"
+                                    >
+                                        {site.domain}
+                                    </a>
+                                </td>
+                                <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAliasSite(site)}
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-input bg-muted/40 px-2 py-1 text-left hover:bg-muted"
+                                    >
+                                        <Link2 className="h-3 w-3" />
+                                        <span>
+                                            {site.aliases.length === 0
+                                                ? t('sites.aliasesEmpty')
+                                                : site.aliases.join(', ')}
+                                        </span>
+                                    </button>
+                                </td>
+                                <td className="px-4 py-2.5 text-muted-foreground">
+                                    {site.path}
+                                </td>
+                                <td className="px-4 py-2.5 text-muted-foreground">
+                                    {phpLines.length > 0 ? (
+                                        <select
+                                            value={site.phpVersion}
+                                            onChange={(e) =>
+                                                handlePhpChange(
+                                                    site.id,
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className="h-7 rounded-md border border-input bg-muted/50 px-2 text-xs"
+                                        >
+                                            {phpLines.map((line) => (
+                                                <option key={line} value={line}>
+                                                    {line}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        site.phpVersion
+                                    )}
+                                </td>
+                                <td className="px-4 py-2.5 text-muted-foreground">
                                     <select
-                                        value={site.phpVersion}
+                                        value={site.webServer}
                                         onChange={(e) =>
-                                            handlePhpChange(site.id, e.target.value)
+                                            handleEngineChange(
+                                                site.id,
+                                                e.target.value,
+                                            )
                                         }
                                         className="h-7 rounded-md border border-input bg-muted/50 px-2 text-xs"
                                     >
-                                        {phpLines.map((line) => (
-                                            <option key={line} value={line}>
-                                                {line}
-                                            </option>
-                                        ))}
+                                        <option value="nginx">
+                                            {t('sites.engineNginx')}
+                                        </option>
+                                        <option value="apache" disabled>
+                                            {t('sites.engineApache')}{' '}
+                                            {t('sites.engineComingSoon')}
+                                        </option>
+                                        <option value="openlitespeed" disabled>
+                                            {t('sites.engineOls')}{' '}
+                                            {t('sites.engineComingSoon')}
+                                        </option>
                                     </select>
-                                ) : (
-                                    site.phpVersion
-                                )}
-                            </td>
-                            <td className="px-4 py-2.5 text-muted-foreground">
-                                <select
-                                    value={site.webServer}
-                                    onChange={(e) =>
-                                        handleEngineChange(
-                                            site.id,
-                                            e.target.value,
-                                        )
-                                    }
-                                    className="h-7 rounded-md border border-input bg-muted/50 px-2 text-xs"
-                                >
-                                    <option value="nginx">
-                                        {t('sites.engineNginx')}
-                                    </option>
-                                    <option value="apache" disabled>
-                                        {t('sites.engineApache')}{' '}
-                                        {t('sites.engineComingSoon')}
-                                    </option>
-                                    <option value="openlitespeed" disabled>
-                                        {t('sites.engineOls')}{' '}
-                                        {t('sites.engineComingSoon')}
-                                    </option>
-                                </select>
-                            </td>
-                            <td className="px-4 py-2.5 text-right">
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => onRemove(site.id)}
-                                >
-                                    <Trash2 />
-                                    {t('sites.removeAction')}
-                                </Button>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-            <AliasDialog
-                site={aliasSite}
-                onClose={() => setAliasSite(null)}
-                onChanged={onRefresh}
-            />
+                                </td>
+                                <td className="px-4 py-2.5 text-right">
+                                    <div className="inline-flex items-center justify-end gap-1">
+                                        <IconActionButton
+                                            label={t('sites.actionOpen')}
+                                            onClick={() =>
+                                                runAction(() =>
+                                                    tauri.openSiteUrl(site.id),
+                                                )
+                                            }
+                                        >
+                                            <Globe />
+                                        </IconActionButton>
+                                        <IconActionButton
+                                            label={t('sites.actionReveal')}
+                                            onClick={() =>
+                                                runAction(() =>
+                                                    tauri.revealSitePath(site.id),
+                                                )
+                                            }
+                                        >
+                                            <FolderOpen />
+                                        </IconActionButton>
+                                        <IconActionButton
+                                            label={t('sites.actionEditor')}
+                                            onClick={() =>
+                                                runAction(() =>
+                                                    tauri.openSiteInEditor(site.id),
+                                                )
+                                            }
+                                        >
+                                            <Code />
+                                        </IconActionButton>
+                                        <IconActionButton
+                                            label={t('sites.actionLogs')}
+                                            onClick={() => setLogsSite(site)}
+                                        >
+                                            <FileText />
+                                        </IconActionButton>
+                                        <IconActionButton
+                                            label={t('sites.removeAction')}
+                                            onClick={() => onRemove(site.id)}
+                                        >
+                                            <Trash2 />
+                                        </IconActionButton>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                <AliasDialog
+                    site={aliasSite}
+                    onClose={() => setAliasSite(null)}
+                    onChanged={onRefresh}
+                />
+                <LogsDialog site={logsSite} onClose={() => setLogsSite(null)} />
+            </div>
         </div>
     );
 }
+
+function IconActionButton({
+    label,
+    onClick,
+    children,
+}: {
+    label: string;
+    onClick: () => void;
+    children: React.ReactNode;
+}) {
+    return (
+        <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={onClick}
+            title={label}
+            aria-label={label}
+            className="h-8 w-8 p-0"
+        >
+            {children}
+        </Button>
+    );
+}
+
+function LogsDialog({
+    site,
+    onClose,
+}: {
+    site: Site | null;
+    onClose: () => void;
+}) {
+    const { t } = useTranslation();
+    const [activeTab, setActiveTab] = useState<'error' | 'access'>('error');
+    const [logs, setLogs] = useState<SiteLogsTail | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
+
+    const loadLogs = async (siteId: number) => {
+        setLoading(true);
+        setErr(null);
+        try {
+            setLogs(await tauri.tailSiteLogs(siteId));
+        } catch (e) {
+            setErr(e instanceof Error ? e.message : 'Failed to load logs.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!site) return;
+        setActiveTab('error');
+        setLogs(null);
+        void loadLogs(site.id);
+    }, [site?.id]);
+
+    if (!site) return null;
+
+    const lines = activeTab === 'error' ? logs?.error : logs?.access;
+    const missing = activeTab === 'error' ? logs?.errorMissing : logs?.accessMissing;
+
+    return (
+        <Dialog
+            open={!!site}
+            onOpenChange={(o) => {
+                if (!o) onClose();
+            }}
+        >
+            <DialogContent className="max-w-3xl">
+                <DialogHeader>
+                    <DialogTitle>
+                        {t('sites.logsDialogTitle', { domain: site.domain })}
+                    </DialogTitle>
+                    <DialogDescription>{site.path}</DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="inline-flex rounded-md border border-input bg-muted/40 p-1 text-xs">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('error')}
+                                className={`rounded px-3 py-1.5 ${
+                                    activeTab === 'error'
+                                        ? 'bg-background text-foreground shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                {t('sites.logsTabError')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('access')}
+                                className={`rounded px-3 py-1.5 ${
+                                    activeTab === 'access'
+                                        ? 'bg-background text-foreground shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                {t('sites.logsTabAccess')}
+                            </button>
+                        </div>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => loadLogs(site.id)}
+                            disabled={loading}
+                        >
+                            {loading ? (
+                                <Loader2 className="animate-spin" />
+                            ) : (
+                                <RefreshCw />
+                            )}
+                            {t('sites.logsRefresh')}
+                        </Button>
+                    </div>
+
+                    {err ? (
+                        <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm">
+                            <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+                            <span className="text-foreground">{err}</span>
+                        </div>
+                    ) : loading && !logs ? (
+                        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-8 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            {t('sites.logsLoading')}
+                        </div>
+                    ) : missing ? (
+                        <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-sm text-muted-foreground">
+                            {t('sites.logsMissing')}
+                        </p>
+                    ) : !lines || lines.length === 0 ? (
+                        <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-8 text-center text-sm text-muted-foreground">
+                            {t('sites.logsEmpty')}
+                        </p>
+                    ) : (
+                        <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 font-mono text-xs leading-relaxed text-foreground">
+                            {lines.join('\n')}
+                        </pre>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button variant="ghost" onClick={onClose}>
+                        {t('sites.logsClose')}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function AddSiteDialog({
     open,
     onOpenChange,

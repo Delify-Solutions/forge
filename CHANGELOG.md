@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ## [Unreleased]
 
 ### Added
+- Per-site quick actions: Open in browser, Reveal in Finder, Open in editor (VS Code / Cursor / Sublime), and View logs. The logs modal shows the last 200 lines of Nginx error and access logs with a refresh button. All actions resolve the site path from SQLite and never trust frontend-provided paths.
 - Alias domains per site: each site can have additional `.test` hostnames stored in a new `site_domains` table (migration `0004_site_domains`) and rendered into the same Nginx `server_name` directive. New Tauri commands `add_site_alias` / `remove_site_alias` and a Sites page "Aliases" column with a manage dialog (EN + VI). Cascade-deletes when the parent site is removed.
 
 ### Changed

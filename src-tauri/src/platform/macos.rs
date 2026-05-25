@@ -13,6 +13,10 @@ use crate::error::{ForgeError, ForgeResult};
 
 const RESOLVER_PATH: &str = "/etc/resolver/test";
 const BREW_PREFIX_CANDIDATES: &[&str] = &["/opt/homebrew", "/usr/local"];
+const EDITOR_CANDIDATES: &[&str] = &["code", "cursor", "subl"];
+// Clippy note: the items are `&'static str` literals but we omit the explicit
+// `'static` annotation on the slice type because `const` items default to
+// `'static` lifetime and clippy warns about the redundancy.
 
 pub fn resolver_expected_content(port: u16) -> String {
     format!("nameserver 127.0.0.1\nport {port}\n")
@@ -275,5 +279,55 @@ pub fn remove_resolver() -> ForgeResult<()> {
         )));
     }
 
+    Ok(())
+}
+
+/// Open `url` in the default browser via `/usr/bin/open`.
+/// Fire-and-forget: we spawn and drop the child so the command returns
+/// immediately without waiting for the browser process.
+pub fn open_url(url: &str) -> ForgeResult<()> {
+    let _child = Command::new("/usr/bin/open")
+        .arg(url)
+        .spawn()
+        .map_err(|e| ForgeError::Other(format!("open_url failed: {e}")))?;
+    // Why: the browser is an external long-lived process; awaiting it would
+    // block the Tauri command for as long as the browser window stays open.
+    Ok(())
+}
+
+/// Reveal `path` in Finder, selecting the folder via `/usr/bin/open -R`.
+pub fn reveal_path(path: &Path) -> ForgeResult<()> {
+    let _child = Command::new("/usr/bin/open")
+        .arg("-R")
+        .arg(path)
+        .spawn()
+        .map_err(|e| ForgeError::Other(format!("reveal_path failed: {e}")))?;
+    Ok(())
+}
+
+/// Detect the first available editor binary from a hard-coded candidate list.
+/// Returns `(binary_path, display_name)` — display_name is the candidate
+/// string (e.g. "code", "cursor", "subl").
+pub fn detect_editor() -> Option<(PathBuf, &'static str)> {
+    let (path, name) = crate::domain::logs::select_first_existing(EDITOR_CANDIDATES)?;
+    let display_name = EDITOR_CANDIDATES
+        .iter()
+        .copied()
+        .find(|candidate| *candidate == name)?;
+    Some((path, display_name))
+}
+
+/// Open `path` in the detected editor. If no editor is found, returns a typed
+/// error that the UI can display as a friendly message.
+pub fn open_in_editor(path: &Path) -> ForgeResult<()> {
+    let Some((binary, _name)) = detect_editor() else {
+        return Err(ForgeError::Other(
+            "No editor found. Install VS Code (`code`), Cursor, or Sublime (`subl`).".into(),
+        ));
+    };
+    let _child = Command::new(&binary)
+        .arg(path)
+        .spawn()
+        .map_err(|e| ForgeError::Other(format!("open_in_editor failed: {e}")))?;
     Ok(())
 }

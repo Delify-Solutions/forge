@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use serde::Serialize;
 use tauri::State;
 
 use crate::domain::sites::{self, AddSiteRequest, Site};
-use crate::domain::{nginx, process::ProcessSupervisor};
+use crate::domain::{logs, nginx, process::ProcessSupervisor};
 use crate::error::ForgeResult;
 use crate::AppState;
 
@@ -68,6 +69,54 @@ pub async fn remove_site_alias(
     let site = sites::remove_alias(&state.pool, id, &domain).await?;
     let _ = try_reload(&state.pool, &state.supervisor).await;
     Ok(site)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteLogsTail {
+    pub error: Vec<String>,
+    pub access: Vec<String>,
+    pub error_missing: bool,
+    pub access_missing: bool,
+}
+
+#[tauri::command]
+pub async fn open_site_url(state: State<'_, AppState>, id: i64) -> ForgeResult<()> {
+    let site = sites::fetch_site(&state.pool, id).await?;
+    crate::platform::macos::open_url(&format!("http://{}", site.domain))
+}
+
+#[tauri::command]
+pub async fn reveal_site_path(state: State<'_, AppState>, id: i64) -> ForgeResult<()> {
+    let site = sites::fetch_site(&state.pool, id).await?;
+    let path = std::path::PathBuf::from(&site.path);
+    crate::platform::macos::reveal_path(&path)
+}
+
+#[tauri::command]
+pub async fn open_site_in_editor(state: State<'_, AppState>, id: i64) -> ForgeResult<()> {
+    let site = sites::fetch_site(&state.pool, id).await?;
+    let path = std::path::PathBuf::from(&site.path);
+    crate::platform::macos::open_in_editor(&path)
+}
+
+#[tauri::command]
+pub async fn tail_site_logs(state: State<'_, AppState>, id: i64) -> ForgeResult<SiteLogsTail> {
+    let site = sites::fetch_site(&state.pool, id).await?;
+    let data_dir = crate::store::data_dir();
+    let logs_dir = data_dir.join("logs").join("nginx");
+    let error_path = logs_dir.join(format!("{}.error.log", site.name));
+    let access_path = logs_dir.join(format!("{}.access.log", site.name));
+
+    let (error, error_missing) = logs::tail_lines(&error_path, 200);
+    let (access, access_missing) = logs::tail_lines(&access_path, 200);
+
+    Ok(SiteLogsTail {
+        error,
+        access,
+        error_missing,
+        access_missing,
+    })
 }
 
 async fn try_reload(pool: &sqlx::SqlitePool, supervisor: &ProcessSupervisor) -> ForgeResult<()> {

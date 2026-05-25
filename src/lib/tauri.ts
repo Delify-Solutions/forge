@@ -5,6 +5,7 @@ import type {
     InstallProgress,
     ProcessStatus,
     Site,
+    SiteLogsTail,
     SystemReport,
 } from '@/types';
 
@@ -34,6 +35,10 @@ export const tauri = {
         invoke<Site>('add_site_alias', { id, domain }),
     removeSiteAlias: (id: number, domain: string) =>
         invoke<Site>('remove_site_alias', { id, domain }),
+    openSiteUrl: (id: number) => invoke<void>('open_site_url', { id }),
+    revealSitePath: (id: number) => invoke<void>('reveal_site_path', { id }),
+    openSiteInEditor: (id: number) => invoke<void>('open_site_in_editor', { id }),
+    tailSiteLogs: (id: number) => invoke<SiteLogsTail>('tail_site_logs', { id }),
     listBundles: () => invoke<BundleEntry[]>('list_bundles'),
     installBundle: (
         engine: string,
