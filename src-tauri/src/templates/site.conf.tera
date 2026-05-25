@@ -5,11 +5,11 @@ server {
     listen 80;
     server_name {{ site.domain }};
     {% if engine == "nginx" %}
-    root {{ site.path }};
+    root "{{ site.document_root }}";
     index index.php index.html;
     {% endif %}
-    access_log {{ logs_dir }}/{{ site.name }}.access.log;
-    error_log {{ logs_dir }}/{{ site.name }}.error.log warn;
+    access_log "{{ logs_dir }}/{{ site.name }}.access.log";
+    error_log "{{ logs_dir }}/{{ site.name }}.error.log" warn;
 
     {% if engine == "nginx" %}
     location / {
@@ -18,10 +18,10 @@ server {
 
     location ~ \.php$ {
         try_files $uri =404;
-        fastcgi_pass unix:{{ php_socket }};
+        fastcgi_pass "unix:{{ php_socket }}";
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include {{ nginx_prefix }}/conf/fastcgi_params;
+        include "{{ nginx_prefix }}/conf/fastcgi_params";
     }
 
     location ~ /\.(?!well-known).* {

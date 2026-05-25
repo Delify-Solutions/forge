@@ -5,15 +5,18 @@
 // nginx supervision) lands in later bước.
 
 use std::fs;
-use std::net::TcpListener;
+use std::net::{TcpListener, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::{ForgeError, ForgeResult};
 
 const RESOLVER_PATH: &str = "/etc/resolver/test";
-const RESOLVER_EXPECTED: &str = "nameserver 127.0.0.1\nport 5353\n";
 const BREW_PREFIX_CANDIDATES: &[&str] = &["/opt/homebrew", "/usr/local"];
+
+pub fn resolver_expected_content(port: u16) -> String {
+    format!("nameserver 127.0.0.1\nport {port}\n")
+}
 
 #[derive(Debug, Clone)]
 pub struct DetectedBinary {
@@ -119,36 +122,94 @@ fn read_version(binary: &Path, version_args: &[&str]) -> Option<String> {
 }
 
 pub fn port_in_use(port: u16) -> bool {
-    TcpListener::bind(("127.0.0.1", port)).is_err()
+    let tcp_in_use = match TcpListener::bind(("127.0.0.1", port)) {
+        Ok(_) => false,
+        Err(e) => e.kind() == std::io::ErrorKind::AddrInUse,
+    };
+    let udp_in_use = match UdpSocket::bind(("127.0.0.1", port)) {
+        Ok(_) => false,
+        Err(e) => e.kind() == std::io::ErrorKind::AddrInUse,
+    };
+    tcp_in_use || udp_in_use
 }
 
+#[allow(dead_code)]
 pub fn process_using_port(port: u16) -> Option<String> {
+    pids_and_name_using_port(port).map(|(_, name)| name)
+}
+
+pub fn pids_and_name_using_port(port: u16) -> Option<(Vec<u32>, String)> {
     let output = Command::new("/usr/sbin/lsof")
-        .args(["-nP", "-iTCP", &format!(":{port}"), "-sTCP:LISTEN", "-Fc"])
+        .args(["-nP", "-i", &format!(":{port}"), "-FpcL"])
         .output()
         .ok()?;
     if !output.status.success() {
         return None;
     }
     let text = String::from_utf8_lossy(&output.stdout);
+    let mut pids: Vec<u32> = Vec::new();
+    let mut first_name: Option<String> = None;
     for line in text.lines() {
-        if let Some(rest) = line.strip_prefix('c') {
-            let name = rest.trim();
-            if !name.is_empty() {
-                return Some(name.to_string());
+        if let Some(rest) = line.strip_prefix('p') {
+            if let Ok(parsed) = rest.trim().parse::<u32>() {
+                pids.push(parsed);
+            }
+        } else if let Some(rest) = line.strip_prefix('c') {
+            let trimmed = rest.trim();
+            if !trimmed.is_empty() && first_name.is_none() {
+                first_name = Some(trimmed.to_string());
             }
         }
     }
-    None
+    if pids.is_empty() {
+        return None;
+    }
+    let name = first_name.unwrap_or_default();
+    Some((pids, name))
 }
 
 pub fn resolver_exists() -> bool {
     Path::new(RESOLVER_PATH).exists()
 }
 
-pub fn resolver_correct() -> bool {
+/// Kill any process belonging to the current user listening on `port` whose
+/// command name is in `expected_names`. Used to reap nginx/dnsmasq from a
+/// previous app instance that detached from the supervisor (e.g. master
+/// process re-parented to launchd).
+pub fn kill_listeners_on_port(port: u16, expected_names: &[&str]) {
+    let Some((pids, name)) = pids_and_name_using_port(port) else {
+        return;
+    };
+    let name_lower = name.to_lowercase();
+    if !expected_names
+        .iter()
+        .any(|n| name_lower.contains(&n.to_lowercase()))
+    {
+        return;
+    }
+    for pid in &pids {
+        let pid_i = *pid as i32;
+        unsafe {
+            libc::kill(pid_i, libc::SIGTERM);
+        }
+    }
+    for _ in 0..30 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if !port_in_use(port) {
+            return;
+        }
+    }
+    for pid in &pids {
+        let pid_i = *pid as i32;
+        unsafe {
+            libc::kill(pid_i, libc::SIGKILL);
+        }
+    }
+}
+
+pub fn resolver_correct(port: u16) -> bool {
     fs::read_to_string(RESOLVER_PATH)
-        .map(|content| content == RESOLVER_EXPECTED)
+        .map(|content| content == resolver_expected_content(port))
         .unwrap_or(false)
 }
 
@@ -156,17 +217,15 @@ pub fn resolver_correct() -> bool {
 /// admin credentials through the native macOS dialog. Idempotent: if the
 /// file already exists with the expected content, returns Ok without
 /// prompting.
-pub fn setup_resolver() -> ForgeResult<()> {
-    if resolver_correct() {
+pub fn setup_resolver(port: u16) -> ForgeResult<()> {
+    if resolver_correct(port) {
         tracing::info!("resolver already correct, skipping prompt");
         return Ok(());
     }
 
-    // Use printf with octal escape so the AppleScript shell text stays
-    // straightforward to embed.
     let prompt = "Delify Forge needs admin access to route .test domains to your local machine.";
     let script = format!(
-        "do shell script \"mkdir -p /etc/resolver && /usr/bin/printf 'nameserver 127.0.0.1\\nport 5353\\n' > /etc/resolver/test && /bin/chmod 644 /etc/resolver/test\" with administrator privileges with prompt \"{prompt}\""
+        "do shell script \"mkdir -p /etc/resolver && /usr/bin/printf 'nameserver 127.0.0.1\\nport {port}\\n' > /etc/resolver/test && /bin/chmod 644 /etc/resolver/test\" with administrator privileges with prompt \"{prompt}\""
     );
 
     let output = Command::new("/usr/bin/osascript")
@@ -183,10 +242,38 @@ pub fn setup_resolver() -> ForgeResult<()> {
         )));
     }
 
-    if !resolver_correct() {
+    if !resolver_correct(port) {
         return Err(ForgeError::Other(
             "resolver write reported success but content does not match expected".into(),
         ));
     }
+    Ok(())
+}
+
+pub fn remove_resolver() -> ForgeResult<()> {
+    if !resolver_exists() {
+        return Ok(());
+    }
+
+    let prompt =
+        "Delify Forge needs admin access to reset local .test DNS routing for debug testing.";
+    let script = format!(
+        "do shell script \"if [ -f {RESOLVER_PATH} ]; then /bin/rm -f {RESOLVER_PATH}; fi\" with administrator privileges with prompt \"{prompt}\""
+    );
+
+    let output = Command::new("/usr/bin/osascript")
+        .arg("-e")
+        .arg(&script)
+        .output()
+        .map_err(|e| ForgeError::Other(format!("osascript spawn failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(ForgeError::Other(format!(
+            "resolver reset failed (osascript exit {}): {stderr}",
+            output.status.code().unwrap_or(-1)
+        )));
+    }
+
     Ok(())
 }

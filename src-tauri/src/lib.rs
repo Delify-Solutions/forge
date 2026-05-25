@@ -14,6 +14,13 @@ use tracing_subscriber::EnvFilter;
 
 use crate::domain::process::ProcessSupervisor;
 
+fn cleanup_orphans_from_previous_session() {
+    use crate::domain::process::kill_orphan_pidfile;
+    kill_orphan_pidfile(&crate::domain::dns::pid_path());
+    kill_orphan_pidfile(&crate::domain::nginx::pid_path());
+    crate::platform::macos::kill_listeners_on_port(80, &["nginx"]);
+}
+
 pub struct AppState {
     pub pool: SqlitePool,
     pub supervisor: ProcessSupervisor,
@@ -28,6 +35,8 @@ pub fn run() {
         .init();
 
     tracing::info!("starting Delify Forge");
+
+    cleanup_orphans_from_previous_session();
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -57,6 +66,7 @@ pub fn run() {
             commands::sites::remove_site,
             commands::sites::update_site_php,
             commands::sites::update_site_web_server,
+            commands::wizard::set_dns_port,
             commands::wizard::setup_dns_resolver,
             commands::wizard::start_dnsmasq,
             commands::wizard::stop_dnsmasq,
@@ -66,6 +76,8 @@ pub fn run() {
             commands::wizard::start_php_fpm,
             commands::wizard::stop_php_fpm,
             commands::wizard::services_status,
+            commands::wizard::debug_reset_environment,
+            commands::system::open_devtools,
             commands::bundles::list_bundles,
             commands::bundles::install_bundle,
             commands::bundles::uninstall_bundle,

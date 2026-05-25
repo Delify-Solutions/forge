@@ -17,7 +17,6 @@
         "steps": {
             "welcome": "Welcome",
             "scan": "System scan",
-            "choose": "Choose source",
             "conflicts": "Resolve conflicts",
             "dns": "Setup DNS",
             "done": "Done"
@@ -26,17 +25,17 @@
             "intro": "Delify Forge serves your local PHP, Node, and other web projects on friendly *.test domains.",
             "actions": "This wizard will:",
             "scanItem": "Scan your machine for nginx, PHP, and dnsmasq.",
-            "pickItem": "Help you pick where each engine should come from.",
-            "conflictItem": "Resolve conflicts on ports 80 and 5353 if any.",
+            "conflictItem": "Resolve conflicts on ports 80 and the selected DNS port if any.",
             "adminItem": "Ask you once for admin access to route .test domains to 127.0.0.1.",
             "languagePrompt": "Pick your language to get started:"
         },
         "scan": {
-            "intro": "Detecting Homebrew, Nginx, PHP, and port availability.",
+            "intro": "Detecting Homebrew, dnsmasq, Nginx, PHP, and port availability.",
             "scanning": "Scanning system…",
             "failedTitle": "Scan failed",
             "labels": {
                 "homebrew": "Homebrew",
+                "dnsmasq": "dnsmasq",
                 "nginx": "Nginx",
                 "php": "PHP",
                 "phpFpm": "PHP-FPM",
@@ -50,28 +49,27 @@
                 "engineMissing": "Not installed",
                 "portInUse": "In use",
                 "portInUseBy": "In use by {{name}}",
+                "portInUseByForge": "In use by Forge",
+                "portInUseByForgeName": "In use by Forge ({{name}})",
                 "portFree": "Available",
                 "resolverOk": "Correct",
                 "resolverMissing": "Not present",
-                "resolverWrong": "Exists but content does not match"
+                "resolverWrong": "Exists but content does not match",
+                "resolverPort": "{{status}} for DNS port {{port}}"
             },
             "actions": {
-                "install": "Install"
+                "install": "Install",
+                "resetAll": "Debug: reset all",
+                "resetting": "Resetting…",
+                "resetConfirm": "Delete downloaded Forge engines, runtime files, logs, and remove /etc/resolver/test so the first-run setup can be tested again?"
             },
             "progress": {
                 "started": "Preparing…",
                 "downloading": "Downloading {{percent}}%",
                 "verifying": "Verifying checksum…",
                 "extracting": "Extracting…",
+                "resetting": "Resetting environment…",
                 "failed": "Install failed"
-            }
-        },
-        "choose": {
-            "intro": "For each engine, pick where Forge should get the binary from. The Forge bundle downloads a prebuilt archive on your behalf.",
-            "options": {
-                "forge": "Forge bundle (recommended)",
-                "brew": "Homebrew",
-                "path": "Binary on PATH"
             }
         },
         "conflicts": {
@@ -83,6 +81,11 @@
         "dns": {
             "intro": "Forge needs to write /etc/resolver/test so macOS routes *.test domains to 127.0.0.1. This requires admin access.",
             "note": "macOS will show a native password dialog. Forge does not store your password — it is used once and discarded. dnsmasq, PHP-FPM, and Nginx start automatically afterward.",
+            "portLabel": "DNS port",
+            "portInvalid": "Enter a valid port between 1 and 65535.",
+            "blockedEngines": "Install missing required engines first (dnsmasq, Nginx, PHP, PHP-FPM).",
+            "blockedPorts": "Free required ports before setup.",
+            "blockedPortInvalid": "Fix the DNS port value before setup.",
             "doneTitle": "Resolver installed and engines running.",
             "action": "Setup DNS now",
             "running": "Setting up…",

@@ -6,7 +6,7 @@
     "build": {
         "beforeDevCommand": "pnpm dev",
         "devUrl": "http://localhost:1420",
-        "beforeBuildCommand": "pnpm build",
+        "beforeBuildCommand": "pnpm build && cargo build --release --manifest-path src-tauri/Cargo.toml --bin forge-disclaim",
         "frontendDist": "../dist"
     },
     "app": {
@@ -38,6 +38,7 @@
             "icons/icon.icns",
             "icons/icon.ico"
         ],
+        "resources": ["target/release/forge-disclaim"],
         "category": "DeveloperTool",
         "shortDescription": "Native local web development environment",
         "longDescription": "Delify Forge — open-source native local web development environment for modern stacks (PHP, Node.js, and more)."

@@ -12,7 +12,7 @@ use sqlx::SqlitePool;
 use tera::{Context, Tera};
 use tokio::process::Command;
 
-use crate::domain::process::{ProcessSpec, ProcessSupervisor};
+use crate::domain::process::{kill_orphan_pidfile, ProcessSpec, ProcessSupervisor};
 use crate::domain::sites::{self, Site};
 use crate::error::{ForgeError, ForgeResult};
 use crate::platform::macos as plat;
@@ -26,14 +26,17 @@ pub const OLS_GATEWAY_ADDR: &str = "127.0.0.1:8188";
 struct SiteCtx {
     name: String,
     path: String,
+    document_root: String,
     domain: String,
 }
 
 impl From<Site> for SiteCtx {
     fn from(s: Site) -> Self {
+        let document_root = sites::document_root(std::path::Path::new(&s.path));
         Self {
             name: s.name,
             path: s.path,
+            document_root: document_root.to_string_lossy().to_string(),
             domain: s.domain,
         }
     }
@@ -41,6 +44,10 @@ impl From<Site> for SiteCtx {
 
 fn runtime_dir() -> PathBuf {
     store::data_dir().join("runtime").join("nginx")
+}
+
+pub fn pid_path() -> PathBuf {
+    runtime_dir().join("nginx.pid")
 }
 
 fn sites_dir() -> PathBuf {
@@ -185,6 +192,9 @@ pub async fn regenerate(pool: &SqlitePool) -> ForgeResult<()> {
 pub async fn start(pool: &SqlitePool, supervisor: &ProcessSupervisor) -> ForgeResult<u32> {
     regenerate(pool).await?;
 
+    kill_orphan_pidfile(&pid_path());
+    plat::kill_listeners_on_port(80, &["nginx"]);
+
     let binary = plat::detect_binary("nginx", &["-v"]).ok_or_else(|| {
         ForgeError::Other("nginx not found — install with: brew install nginx".into())
     })?;
@@ -270,6 +280,7 @@ mod tests {
             &SiteCtx {
                 name: "myapp".to_string(),
                 path: "/Users/me/Code/myapp".to_string(),
+                document_root: "/Users/me/Code/myapp/public".to_string(),
                 domain: "myapp.test".to_string(),
             },
         );
@@ -283,8 +294,8 @@ mod tests {
             .render("site.conf.tera", &site_ctx)
             .expect("site config renders");
         assert!(rendered.contains("server_name myapp.test;"));
-        assert!(rendered.contains("root /Users/me/Code/myapp;"));
-        assert!(rendered.contains("fastcgi_pass unix:/tmp/forge/php.sock;"));
+        assert!(rendered.contains("root \"/Users/me/Code/myapp/public\";"));
+        assert!(rendered.contains("fastcgi_pass \"unix:/tmp/forge/php.sock\";"));
         assert!(!rendered.contains("proxy_pass"));
 
         // Per-site config (apache engine).
@@ -294,6 +305,7 @@ mod tests {
             &SiteCtx {
                 name: "blog".to_string(),
                 path: "/Users/me/Code/blog".to_string(),
+                document_root: "/Users/me/Code/blog/public".to_string(),
                 domain: "blog.test".to_string(),
             },
         );
@@ -318,6 +330,7 @@ mod tests {
             &SiteCtx {
                 name: "shop".to_string(),
                 path: "/Users/me/Code/shop".to_string(),
+                document_root: "/Users/me/Code/shop/public".to_string(),
                 domain: "shop.test".to_string(),
             },
         );

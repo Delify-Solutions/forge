@@ -14,6 +14,28 @@ use tokio::sync::Mutex;
 
 use crate::error::{ForgeError, ForgeResult};
 
+#[cfg(target_os = "macos")]
+fn disclaim_trampoline() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let candidates = [
+        dir.join("forge-disclaim"),
+        dir.join("../Resources/forge-disclaim"),
+        dir.join("../Resources/_up_/forge-disclaim"),
+    ];
+    for c in candidates {
+        if c.is_file() {
+            return Some(c);
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+fn disclaim_trampoline() -> Option<PathBuf> {
+    None
+}
+
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProcessState {
@@ -66,9 +88,20 @@ impl ProcessSupervisor {
             }
         }
 
-        let mut cmd = Command::new(&spec.binary);
-        cmd.args(&spec.args)
-            .kill_on_drop(true)
+        let mut cmd = match disclaim_trampoline() {
+            Some(trampoline) => {
+                let mut c = Command::new(trampoline);
+                c.arg(&spec.binary);
+                c.args(&spec.args);
+                c
+            }
+            None => {
+                let mut c = Command::new(&spec.binary);
+                c.args(&spec.args);
+                c
+            }
+        };
+        cmd.kill_on_drop(true)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped());
@@ -177,6 +210,24 @@ impl ProcessSupervisor {
         out
     }
 
+    pub async fn running_pids(&self) -> Vec<u32> {
+        let mut guard = self.inner.lock().await;
+        let names: Vec<String> = guard.keys().cloned().collect();
+        let mut out = Vec::with_capacity(names.len());
+        for name in names {
+            if let Some(entry) = guard.get_mut(&name) {
+                if let Some(child) = entry.child.as_mut() {
+                    if let Ok(None) = child.try_wait() {
+                        if let Some(pid) = child.id() {
+                            out.push(pid);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
     pub async fn shutdown_all(&self) {
         let names: Vec<String> = {
             let guard = self.inner.lock().await;
@@ -186,4 +237,41 @@ impl ProcessSupervisor {
             let _ = self.stop(&name).await;
         }
     }
+}
+
+/// Best-effort: if `pidfile` contains a live PID, send SIGTERM, wait briefly,
+/// then SIGKILL. Used to clean up engine processes left behind by a previous
+/// app instance that didn't shut down cleanly (e.g. binary was replaced).
+pub fn kill_orphan_pidfile(pidfile: &std::path::Path) {
+    let Ok(content) = std::fs::read_to_string(pidfile) else {
+        return;
+    };
+    let Ok(pid) = content.trim().parse::<i32>() else {
+        let _ = std::fs::remove_file(pidfile);
+        return;
+    };
+    if pid <= 1 {
+        let _ = std::fs::remove_file(pidfile);
+        return;
+    }
+    unsafe {
+        if libc::kill(pid, 0) != 0 {
+            let _ = std::fs::remove_file(pidfile);
+            return;
+        }
+        libc::kill(pid, libc::SIGTERM);
+    }
+    for _ in 0..30 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        unsafe {
+            if libc::kill(pid, 0) != 0 {
+                let _ = std::fs::remove_file(pidfile);
+                return;
+            }
+        }
+    }
+    unsafe {
+        libc::kill(pid, libc::SIGKILL);
+    }
+    let _ = std::fs::remove_file(pidfile);
 }

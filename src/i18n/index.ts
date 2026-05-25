@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// i18next bootstrap. Two languages on day one (en, vi). The default falls
-// back to en when nothing is stored, but the wizard's first step nudges the
-// user to pick explicitly.
+// i18next bootstrap. Two languages on day one (en, vi). Default is English;
+// we deliberately do not auto-detect from `navigator` so a Vietnamese-locale
+// macOS still lands on English on first run. The wizard's welcome step lets
+// the user switch, and the choice persists in localStorage from then on.
 
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
@@ -34,7 +35,7 @@ void i18n
             escapeValue: false,
         },
         detection: {
-            order: ['localStorage', 'navigator'],
+            order: ['localStorage'],
             lookupLocalStorage: STORAGE_KEY,
             caches: ['localStorage'],
         },

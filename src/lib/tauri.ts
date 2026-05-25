@@ -10,8 +10,9 @@ import type {
 
 export const tauri = {
     scanSystem: () => invoke<SystemReport>('scan_system'),
-    setupDnsResolver: () => invoke<void>('setup_dns_resolver'),
-    startDnsmasq: () => invoke<number>('start_dnsmasq'),
+    setDnsPort: (port: number) => invoke<void>('set_dns_port', { port }),
+    setupDnsResolver: (port?: number) => invoke<void>('setup_dns_resolver', { port }),
+    startDnsmasq: (port?: number) => invoke<number>('start_dnsmasq', { port }),
     stopDnsmasq: () => invoke<void>('stop_dnsmasq'),
     startNginx: () => invoke<number>('start_nginx'),
     stopNginx: () => invoke<void>('stop_nginx'),
@@ -19,6 +20,8 @@ export const tauri = {
     startPhpFpm: () => invoke<number>('start_php_fpm'),
     stopPhpFpm: () => invoke<void>('stop_php_fpm'),
     servicesStatus: () => invoke<ProcessStatus[]>('services_status'),
+    debugResetEnvironment: () => invoke<void>('debug_reset_environment'),
+    openDevtools: () => invoke<void>('open_devtools'),
     listSites: () => invoke<Site[]>('list_sites'),
     addSite: (name: string, path: string, phpVersion?: string, webServer?: string) =>
         invoke<Site>('add_site', { req: { name, path, phpVersion, webServer } }),

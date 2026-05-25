@@ -10,7 +10,7 @@ use serde::Serialize;
 use tera::{Context, Tera};
 
 use crate::domain::bundle;
-use crate::domain::process::{ProcessSpec, ProcessSupervisor};
+use crate::domain::process::{kill_orphan_pidfile, ProcessSpec, ProcessSupervisor};
 use crate::error::{ForgeError, ForgeResult};
 use crate::platform::macos as plat;
 use crate::store;
@@ -109,6 +109,8 @@ pub async fn start(supervisor: &ProcessSupervisor) -> ForgeResult<u32> {
     };
 
     let config = render_config(&effective_lines)?;
+
+    kill_orphan_pidfile(&runtime_dir().join("php-fpm.pid"));
 
     // Best-effort: remove stale sockets before spawn.
     for line in &effective_lines {

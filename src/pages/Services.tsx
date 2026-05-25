@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Play, RefreshCw, Square } from 'lucide-react';
+import { Loader2, Play, RefreshCw, Square, Wand2 } from 'lucide-react';
 
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,11 @@ const SERVICES: ManagedService[] = [
     },
 ];
 
-export function Services() {
+interface ServicesProps {
+    onOpenWizard: () => void;
+}
+
+export function Services({ onOpenWizard }: ServicesProps) {
     const [statuses, setStatuses] = useState<ProcessStatus[]>([]);
     const [busy, setBusy] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -87,10 +91,16 @@ export function Services() {
                     title="Services"
                     description="Engines Forge currently supervises."
                 />
-                <Button variant="outline" size="sm" onClick={refresh}>
-                    <RefreshCw />
-                    Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={onOpenWizard}>
+                        <Wand2 />
+                        Open wizard
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={refresh}>
+                        <RefreshCw />
+                        Refresh
+                    </Button>
+                </div>
             </div>
 
             {error && (

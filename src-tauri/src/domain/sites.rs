@@ -110,6 +110,8 @@ pub async fn add(pool: &SqlitePool, req: AddSiteRequest) -> ForgeResult<Site> {
 
     let id = result.last_insert_rowid();
 
+    write_default_landing(path, &req.name);
+
     let row = sqlx::query_as::<_, (i64, String, String, String, String, String)>(
         "SELECT id, name, path, php_version, web_server, created_at FROM sites WHERE id = ?",
     )
@@ -127,6 +129,39 @@ pub async fn add(pool: &SqlitePool, req: AddSiteRequest) -> ForgeResult<Site> {
         web_server: row.4,
         created_at: row.5,
     })
+}
+
+const LANDING_TEMPLATE: &str = include_str!("../templates/landing.php");
+const ENTRYPOINTS: [&str; 3] = ["index.php", "index.html", "index.htm"];
+
+pub fn document_root(path: &std::path::Path) -> std::path::PathBuf {
+    let public = path.join("public");
+    if public.is_dir() && has_entrypoint(&public) {
+        public
+    } else {
+        path.to_path_buf()
+    }
+}
+
+fn has_entrypoint(dir: &std::path::Path) -> bool {
+    ENTRYPOINTS
+        .iter()
+        .any(|candidate| dir.join(candidate).exists())
+}
+
+fn write_default_landing(dir: &std::path::Path, site_name: &str) {
+    if !dir.is_dir() || has_entrypoint(dir) || has_entrypoint(&dir.join("public")) {
+        return;
+    }
+    let rendered = LANDING_TEMPLATE.replace("__SITE_NAME__", site_name);
+    let target = dir.join("index.php");
+    if let Err(err) = std::fs::write(&target, rendered) {
+        tracing::warn!(
+            site = site_name,
+            target = %target.display(),
+            "failed to write default landing page: {err}"
+        );
+    }
 }
 
 pub async fn remove(pool: &SqlitePool, id: i64) -> ForgeResult<()> {
@@ -275,6 +310,40 @@ mod tests {
         assert!(validate_php_version("").is_err());
         assert!(validate_php_version(".3").is_err());
         assert!(validate_php_version("8.").is_err());
+    }
+
+    #[test]
+    fn uses_public_dir_when_it_contains_entrypoint() {
+        let root = std::env::temp_dir().join(format!(
+            "forge-site-root-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let public = root.join("public");
+        std::fs::create_dir_all(&public).unwrap();
+        std::fs::write(public.join("index.php"), "<?php").unwrap();
+
+        assert_eq!(document_root(&root), public);
+
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn keeps_root_when_public_dir_has_no_entrypoint() {
+        let root = std::env::temp_dir().join(format!(
+            "forge-site-root-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("public")).unwrap();
+
+        assert_eq!(document_root(&root), root);
+
+        std::fs::remove_dir_all(root).ok();
     }
 
     #[test]

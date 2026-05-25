@@ -14,6 +14,7 @@ export interface PortStatus {
     port: number;
     inUse: boolean;
     usedBy?: string;
+    ownedByForge: boolean;
 }
 
 export interface EngineStatus {
@@ -25,9 +26,11 @@ export interface EngineStatus {
 
 export interface SystemReport {
     homebrew: { installed: boolean; prefix?: string };
+    dnsmasq: EngineStatus;
     nginx: EngineStatus;
     php: EngineStatus;
     phpFpm: EngineStatus;
+    dnsPort: number;
     ports: PortStatus[];
     resolver: { exists: boolean; correct: boolean };
     installedPhpVersions: string[];

@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// dnsmasq lifecycle for the .test TLD. Runs unprivileged on port 5353
-// because `/etc/resolver/test` opts the macOS resolver into a custom
+// dnsmasq lifecycle for the .test TLD. Runs unprivileged on a configurable
+// port because `/etc/resolver/test` opts the macOS resolver into a custom
 // port, so we never need to bind 53.
 
 use std::path::PathBuf;
 
-use crate::domain::process::{ProcessSpec, ProcessSupervisor};
+use crate::domain::process::{kill_orphan_pidfile, ProcessSpec, ProcessSupervisor};
 use crate::error::{ForgeError, ForgeResult};
 use crate::store;
 
 pub const DNSMASQ_PROCESS: &str = "dnsmasq";
-pub const DNSMASQ_PORT: u16 = 5353;
 
 fn runtime_dir() -> PathBuf {
     store::data_dir().join("runtime").join("dnsmasq")
@@ -21,11 +20,11 @@ fn config_path() -> PathBuf {
     runtime_dir().join("dnsmasq.conf")
 }
 
-fn pid_path() -> PathBuf {
+pub fn pid_path() -> PathBuf {
     runtime_dir().join("dnsmasq.pid")
 }
 
-pub fn render_config() -> ForgeResult<PathBuf> {
+pub fn render_config(port: u16) -> ForgeResult<PathBuf> {
     let dir = runtime_dir();
     std::fs::create_dir_all(&dir)
         .map_err(|e| ForgeError::Other(format!("create dnsmasq runtime dir: {e}")))?;
@@ -41,7 +40,7 @@ pub fn render_config() -> ForgeResult<PathBuf> {
          address=/.test/127.0.0.1\n\
          pid-file={pid}\n\
          log-queries=no\n",
-        port = DNSMASQ_PORT,
+        port = port,
         pid = pid_path().display()
     );
 
@@ -51,21 +50,23 @@ pub fn render_config() -> ForgeResult<PathBuf> {
     Ok(path)
 }
 
-pub async fn start(supervisor: &ProcessSupervisor) -> ForgeResult<u32> {
+pub async fn start(supervisor: &ProcessSupervisor, port: u16) -> ForgeResult<u32> {
     let binary =
         crate::platform::macos::detect_binary("dnsmasq", &["--version"]).ok_or_else(|| {
             ForgeError::Other("dnsmasq not found — install with: brew install dnsmasq".into())
         })?;
 
-    let config = render_config()?;
+    let config = render_config(port)?;
+
+    kill_orphan_pidfile(&pid_path());
+    crate::platform::macos::kill_listeners_on_port(port, &["dnsmasq"]);
 
     let spec = ProcessSpec {
         name: DNSMASQ_PROCESS.to_string(),
         binary: binary.binary,
         args: vec![
             "--keep-in-foreground".to_string(),
-            "--conf-file".to_string(),
-            config.to_string_lossy().to_string(),
+            format!("--conf-file={}", config.to_string_lossy()),
         ],
         env: Vec::new(),
     };
@@ -83,17 +84,12 @@ mod tests {
 
     #[test]
     fn renders_config_with_expected_directives() {
-        // We can't write into the real data dir from tests; just verify
-        // the body of the config matches what dnsmasq expects without
-        // taking a filesystem dependency.
-        let port = DNSMASQ_PORT;
+        let port = 5533;
         let expected_lines = [
             format!("port={port}"),
             "address=/.test/127.0.0.1".to_string(),
             "no-daemon".to_string(),
         ];
-        // We rely on the real render_config path being exercised in
-        // integration; here we just sanity-check our constants.
         for line in &expected_lines {
             assert!(!line.is_empty());
         }

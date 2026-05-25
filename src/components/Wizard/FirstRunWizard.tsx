@@ -11,6 +11,7 @@ import {
     ArrowLeft,
     RefreshCw,
     Download,
+    RotateCcw,
 } from 'lucide-react';
 
 import {
@@ -22,17 +23,48 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { tauri } from '@/lib/tauri';
 import { SUPPORTED_LANGUAGES, setLanguage, type LanguageCode } from '@/i18n';
 import type { InstallProgress, SystemReport } from '@/types';
 
-type Step = 'welcome' | 'scan' | 'choose' | 'conflicts' | 'dns' | 'done';
+type Step = 'welcome' | 'scan' | 'conflicts' | 'dns' | 'done';
+
+const DNS_PORT_MIN = 1;
+const DNS_PORT_MAX = 65535;
+const DNS_PORT_DRAFT_KEY = 'delify-forge.wizard.dns-port-draft';
+
+function isValidPort(value: string): boolean {
+    if (!/^\d+$/.test(value.trim())) {
+        return false;
+    }
+    const port = Number(value);
+    return Number.isInteger(port) && port >= DNS_PORT_MIN && port <= DNS_PORT_MAX;
+}
+
+function requiredEnginesMissing(report: SystemReport | null): boolean {
+    if (!report) {
+        return true;
+    }
+    return (
+        !report.dnsmasq.found ||
+        !report.nginx.found ||
+        !report.php.found ||
+        !report.phpFpm.found
+    );
+}
+
+function hasRequiredPortConflicts(report: SystemReport | null): boolean {
+    if (!report) {
+        return true;
+    }
+    return report.ports.some((port) => port.inUse && !port.ownedByForge);
+}
 
 const STEPS: { id: Step; labelKey: string }[] = [
     { id: 'welcome', labelKey: 'wizard.steps.welcome' },
     { id: 'scan', labelKey: 'wizard.steps.scan' },
-    { id: 'choose', labelKey: 'wizard.steps.choose' },
     { id: 'conflicts', labelKey: 'wizard.steps.conflicts' },
     { id: 'dns', labelKey: 'wizard.steps.dns' },
     { id: 'done', labelKey: 'wizard.steps.done' },
@@ -40,7 +72,7 @@ const STEPS: { id: Step; labelKey: string }[] = [
 
 type RowStatus = 'ok' | 'warn' | 'error';
 
-type EngineKey = 'nginx' | 'php' | 'phpFpm';
+type EngineKey = 'dnsmasq' | 'nginx' | 'php' | 'phpFpm';
 
 interface ScanRow {
     key: string;
@@ -54,6 +86,7 @@ interface ScanRow {
 // served by reusing the PHP engine. The frontend keeps them as separate
 // rows for clarity but routes the click to the PHP bundle.
 const ENGINE_BUNDLE_NAME: Record<EngineKey, string> = {
+    dnsmasq: 'dnsmasq',
     nginx: 'nginx',
     php: 'php',
     phpFpm: 'php',
@@ -73,9 +106,29 @@ export function FirstRunWizard({ open, onComplete }: FirstRunWizardProps) {
     const [installState, setInstallState] = useState<
         Record<string, InstallProgress>
     >({});
+    const [resetting, setResetting] = useState(false);
+    const [resetError, setResetError] = useState<string | null>(null);
+    const [dnsSetupDone, setDnsSetupDone] = useState(false);
+    const [dnsPortDraft, setDnsPortDraft] = useState<string>(() => {
+        try {
+            return localStorage.getItem(DNS_PORT_DRAFT_KEY) ?? '';
+        } catch {
+            return '';
+        }
+    });
 
     const step = STEPS[stepIndex].id;
     const canGoBack = stepIndex > 0 && step !== 'done';
+    const canContinue = step !== 'dns' || dnsSetupDone;
+    const dnsPortValue = dnsPortDraft.trim() || String(report?.dnsPort ?? 5533);
+    const dnsPortValid = isValidPort(dnsPortValue);
+    const enginesMissing = requiredEnginesMissing(report);
+    const portsBlocked = hasRequiredPortConflicts(report);
+
+    const rows = useMemo<ScanRow[]>(
+        () => (report ? buildScanRows(report, t) : []),
+        [report, t],
+    );
 
     const next = () => setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
     const back = () => setStepIndex((i) => Math.max(i - 1, 0));
@@ -84,9 +137,17 @@ export function FirstRunWizard({ open, onComplete }: FirstRunWizardProps) {
     const runScan = async () => {
         setScanning(true);
         setScanError(null);
+        setDnsSetupDone(false);
         try {
             const result = await tauri.scanSystem();
+            const dnsPort = String(result.dnsPort);
             setReport(result);
+            setDnsPortDraft(dnsPort);
+            try {
+                localStorage.setItem(DNS_PORT_DRAFT_KEY, dnsPort);
+            } catch {
+                // ignore storage errors
+            }
         } catch (err) {
             setScanError(err instanceof Error ? err.message : 'Scan failed.');
         } finally {
@@ -95,6 +156,7 @@ export function FirstRunWizard({ open, onComplete }: FirstRunWizardProps) {
     };
 
     const installEngine = async (engine: EngineKey) => {
+        setResetError(null);
         const bundleEngine = ENGINE_BUNDLE_NAME[engine];
         setInstallState((s) => ({
             ...s,
@@ -119,17 +181,65 @@ export function FirstRunWizard({ open, onComplete }: FirstRunWizardProps) {
         }
     };
 
+    const debugReset = async () => {
+        if (!window.confirm(t('wizard.scan.actions.resetConfirm'))) {
+            return;
+        }
+
+        setResetting(true);
+        setResetError(null);
+        try {
+            await tauri.debugResetEnvironment();
+            setInstallState({});
+            setReport(null);
+            await runScan();
+        } catch (err) {
+            setResetError(
+                err instanceof Error ? err.message : 'Reset environment failed.',
+            );
+        } finally {
+            setResetting(false);
+        }
+    };
+
     useEffect(() => {
-        if (open && step === 'scan' && !report && !scanning) {
+        if (open) {
+            setDnsSetupDone(false);
+        }
+    }, [open]);
+
+    useEffect(() => {
+        if (open && step === 'scan' && !report && !scanning && !resetting) {
             void runScan();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, step]);
 
-    const rows = useMemo<ScanRow[]>(
-        () => (report ? buildScanRows(report, t) : []),
-        [report, t],
-    );
+    useEffect(() => {
+        if (!open || step !== 'dns' || !report) {
+            return;
+        }
+        const trimmed = dnsPortDraft.trim();
+        if (!trimmed || !isValidPort(trimmed)) {
+            return;
+        }
+        const desired = Number(trimmed);
+        if (desired === report.dnsPort) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            void (async () => {
+                try {
+                    await tauri.setDnsPort(desired);
+                    await runScan();
+                } catch {
+                    // surface via scan error path; ignore here
+                }
+            })();
+        }, 400);
+        return () => window.clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dnsPortDraft, step, open, report?.dnsPort]);
 
     return (
         <Dialog open={open}>
@@ -154,33 +264,64 @@ export function FirstRunWizard({ open, onComplete }: FirstRunWizardProps) {
                     {step === 'scan' && (
                         <ScanStep
                             scanning={scanning}
+                            resetting={resetting}
                             rows={rows}
                             report={report}
-                            error={scanError}
+                            error={resetError ?? scanError}
                             installState={installState}
-                            onRescan={runScan}
-                            onInstall={installEngine}
+                            onRescan={() => void runScan()}
+                            onInstall={(engine) => void installEngine(engine)}
+                            onDebugReset={() => void debugReset()}
                         />
                     )}
-                    {step === 'choose' && <ChooseStep />}
                     {step === 'conflicts' && <ConflictsStep report={report} />}
-                    {step === 'dns' && <DnsStep />}
+                    {step === 'dns' && (
+                        <DnsStep
+                            dnsPort={dnsPortValue}
+                            dnsPortValid={dnsPortValid}
+                            onDnsPortChange={(value) => {
+                                setDnsPortDraft(value);
+                                setDnsSetupDone(false);
+                                try {
+                                    localStorage.setItem(
+                                        DNS_PORT_DRAFT_KEY,
+                                        value,
+                                    );
+                                } catch {
+                                    // ignore storage errors
+                                }
+                            }}
+                            enginesMissing={enginesMissing}
+                            portsBlocked={portsBlocked}
+                            onSetupDone={() => setDnsSetupDone(true)}
+                        />
+                    )}
                     {step === 'done' && <DoneStep />}
                 </div>
 
                 <DialogFooter className="flex items-center justify-between">
                     <div>
                         {canGoBack && (
-                            <Button variant="ghost" size="sm" onClick={back}>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={back}
+                                disabled={scanning || resetting}
+                            >
                                 <ArrowLeft />
                                 {t('common.back')}
                             </Button>
                         )}
                     </div>
                     {step === 'done' ? (
-                        <Button onClick={finish}>{t('common.open')}</Button>
+                        <Button onClick={finish} disabled={scanning || resetting}>
+                            {t('common.open')}
+                        </Button>
                     ) : (
-                        <Button onClick={next}>
+                        <Button
+                            onClick={next}
+                            disabled={scanning || resetting || !canContinue}
+                        >
                             {t('common.continue')}
                             <ArrowRight />
                         </Button>
@@ -209,6 +350,7 @@ function buildScanRows(
     });
 
     const engines: { key: EngineKey; labelKey: string }[] = [
+        { key: 'dnsmasq', labelKey: 'wizard.scan.labels.dnsmasq' },
         { key: 'nginx', labelKey: 'wizard.scan.labels.nginx' },
         { key: 'php', labelKey: 'wizard.scan.labels.php' },
         { key: 'phpFpm', labelKey: 'wizard.scan.labels.phpFpm' },
@@ -229,17 +371,27 @@ function buildScanRows(
     }
 
     for (const port of report.ports) {
+        const ownedByForge = port.inUse && port.ownedByForge;
+        const status: RowStatus = ownedByForge ? 'ok' : port.inUse ? 'warn' : 'ok';
+        let detail: string;
+        if (ownedByForge) {
+            detail = port.usedBy
+                ? t('wizard.scan.details.portInUseByForgeName', {
+                      name: port.usedBy,
+                  })
+                : t('wizard.scan.details.portInUseByForge');
+        } else if (port.inUse) {
+            detail = port.usedBy
+                ? t('wizard.scan.details.portInUseBy', { name: port.usedBy })
+                : t('wizard.scan.details.portInUse');
+        } else {
+            detail = t('wizard.scan.details.portFree');
+        }
         rows.push({
             key: `port-${port.port}`,
             label: t('wizard.scan.labels.port', { port: port.port }),
-            status: port.inUse ? 'warn' : 'ok',
-            detail: port.inUse
-                ? port.usedBy
-                    ? t('wizard.scan.details.portInUseBy', {
-                          name: port.usedBy,
-                      })
-                    : t('wizard.scan.details.portInUse')
-                : t('wizard.scan.details.portFree'),
+            status,
+            detail,
         });
     }
 
@@ -259,7 +411,10 @@ function buildScanRows(
         key: 'resolver',
         label: t('wizard.scan.labels.resolver'),
         status: resolverStatus,
-        detail: resolverDetail,
+        detail: t('wizard.scan.details.resolverPort', {
+            port: report.dnsPort,
+            status: resolverDetail,
+        }),
     });
 
     return rows;
@@ -326,7 +481,6 @@ function WelcomeStep() {
             <p>{t('wizard.welcome.actions')}</p>
             <ul className="ml-5 list-disc space-y-1 text-muted-foreground">
                 <li>{t('wizard.welcome.scanItem')}</li>
-                <li>{t('wizard.welcome.pickItem')}</li>
                 <li>{t('wizard.welcome.conflictItem')}</li>
                 <li>{t('wizard.welcome.adminItem')}</li>
             </ul>
@@ -336,43 +490,67 @@ function WelcomeStep() {
 
 function ScanStep({
     scanning,
+    resetting,
     rows,
     report,
     error,
     installState,
     onRescan,
     onInstall,
+    onDebugReset,
 }: {
     scanning: boolean;
+    resetting: boolean;
     rows: ScanRow[];
     report: SystemReport | null;
     error: string | null;
     installState: Record<string, InstallProgress>;
     onRescan: () => void;
     onInstall: (engine: EngineKey) => void;
+    onDebugReset: () => void;
 }) {
     const { t } = useTranslation();
+    const busy = scanning || resetting;
     return (
         <div className="space-y-2 text-sm">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between gap-2">
                 <p className="text-muted-foreground">
                     {t('wizard.scan.intro')}
                 </p>
-                <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={onRescan}
-                    disabled={scanning}
-                >
-                    <RefreshCw className={cn(scanning && 'animate-spin')} />
-                    {t('common.rescan')}
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={onRescan}
+                        disabled={busy}
+                    >
+                        <RefreshCw className={cn(scanning && 'animate-spin')} />
+                        {t('common.rescan')}
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={onDebugReset}
+                        disabled={busy}
+                    >
+                        {resetting ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                            <RotateCcw className="h-3 w-3" />
+                        )}
+                        {resetting
+                            ? t('wizard.scan.actions.resetting')
+                            : t('wizard.scan.actions.resetAll')}
+                    </Button>
+                </div>
             </div>
 
-            {scanning && !report && (
+            {(scanning || resetting) && !report && (
                 <div className="flex items-center gap-2 text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {t('wizard.scan.scanning')}
+                    {resetting
+                        ? t('wizard.scan.progress.resetting')
+                        : t('wizard.scan.scanning')}
                 </div>
             )}
 
@@ -497,43 +675,9 @@ function renderProgress(
     }
 }
 
-function ChooseStep() {
-    const { t } = useTranslation();
-    return (
-        <div className="space-y-3 text-sm">
-            <p>{t('wizard.choose.intro')}</p>
-            <div className="space-y-2">
-                {(['Nginx', 'PHP', 'PHP-FPM'] as const).map((engine) => (
-                    <label
-                        key={engine}
-                        className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2"
-                    >
-                        <span className="font-medium">{engine}</span>
-                        <select
-                            disabled
-                            className="rounded-md border border-input bg-muted/50 px-2 py-1 text-xs"
-                            defaultValue="forge"
-                        >
-                            <option value="forge">
-                                {t('wizard.choose.options.forge')}
-                            </option>
-                            <option value="brew">
-                                {t('wizard.choose.options.brew')}
-                            </option>
-                            <option value="path">
-                                {t('wizard.choose.options.path')}
-                            </option>
-                        </select>
-                    </label>
-                ))}
-            </div>
-        </div>
-    );
-}
-
 function ConflictsStep({ report }: { report: SystemReport | null }) {
     const { t } = useTranslation();
-    const conflicts = report?.ports.filter((p) => p.inUse) ?? [];
+    const conflicts = report?.ports.filter((p) => p.inUse && !p.ownedByForge) ?? [];
 
     if (!report) {
         return (
@@ -581,23 +725,63 @@ function ConflictsStep({ report }: { report: SystemReport | null }) {
     );
 }
 
-function DnsStep() {
+function DnsStep({
+    dnsPort,
+    dnsPortValid,
+    onDnsPortChange,
+    enginesMissing,
+    portsBlocked,
+    onSetupDone,
+}: {
+    dnsPort: string;
+    dnsPortValid: boolean;
+    onDnsPortChange: (value: string) => void;
+    enginesMissing: boolean;
+    portsBlocked: boolean;
+    onSetupDone: () => void;
+}) {
     const { t } = useTranslation();
     const [busy, setBusy] = useState(false);
     const [done, setDone] = useState(false);
     const [err, setErr] = useState<string | null>(null);
 
+    const blockedReasons: string[] = [];
+    if (enginesMissing) {
+        blockedReasons.push(t('wizard.dns.blockedEngines'));
+    }
+    if (portsBlocked) {
+        blockedReasons.push(t('wizard.dns.blockedPorts'));
+    }
+    if (!dnsPortValid) {
+        blockedReasons.push(t('wizard.dns.blockedPortInvalid'));
+    }
+
     const run = async () => {
+        if (blockedReasons.length > 0) {
+            return;
+        }
+
         setBusy(true);
         setErr(null);
         try {
-            await tauri.setupDnsResolver();
-            await tauri.startDnsmasq();
+            const port = Number(dnsPort.trim());
+            const selectedPort = Number.isFinite(port) ? port : undefined;
+            if (selectedPort !== undefined) {
+                await tauri.setDnsPort(selectedPort);
+            }
+            await tauri.setupDnsResolver(selectedPort);
+            await tauri.startDnsmasq(selectedPort);
             await tauri.startPhpFpm();
             await tauri.startNginx();
             setDone(true);
+            onSetupDone();
         } catch (e) {
-            setErr(e instanceof Error ? e.message : t('wizard.dns.failed'));
+            const message = typeof e === 'string'
+                ? e
+                : e instanceof Error
+                  ? e.message
+                  : t('wizard.dns.failed');
+            setErr(message || t('wizard.dns.failed'));
         } finally {
             setBusy(false);
         }
@@ -609,6 +793,37 @@ function DnsStep() {
             <div className="rounded-md border border-border bg-background p-3 text-xs">
                 <p className="text-muted-foreground">{t('wizard.dns.note')}</p>
             </div>
+            <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">
+                    {t('wizard.dns.portLabel')}
+                </label>
+                <Input
+                    type="number"
+                    min={DNS_PORT_MIN}
+                    max={DNS_PORT_MAX}
+                    value={dnsPort}
+                    onChange={(e) => onDnsPortChange(e.target.value)}
+                    disabled={busy || done}
+                    className={cn(
+                        'h-9 w-32',
+                        !dnsPortValid && 'border-destructive focus-visible:ring-destructive',
+                    )}
+                />
+                {!dnsPortValid && (
+                    <p className="text-xs text-destructive">
+                        {t('wizard.dns.portInvalid')}
+                    </p>
+                )}
+            </div>
+            {blockedReasons.length > 0 && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    <ul className="ml-4 list-disc space-y-0.5">
+                        {blockedReasons.map((r) => (
+                            <li key={r}>{r}</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
             {done ? (
                 <div className="flex items-center gap-2 text-emerald-500">
                     <CheckCircle2 className="h-4 w-4" />
@@ -616,7 +831,11 @@ function DnsStep() {
                 </div>
             ) : (
                 <div className="flex gap-2">
-                    <Button size="sm" onClick={run} disabled={busy}>
+                    <Button
+                        size="sm"
+                        onClick={run}
+                        disabled={busy || blockedReasons.length > 0}
+                    >
                         {busy ? <Loader2 className="animate-spin" /> : null}
                         {busy ? t('wizard.dns.running') : t('wizard.dns.action')}
                     </Button>
