@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [0.0.2-mvp] — 2026-05-26
+
+### Added
+- Multi-PHP-version backend with one PHP-FPM pool per detected `<major>.<minor>` line, sockets at `runtime/php/<line>.sock`.
+- Per-site PHP version picker in the Sites page.
+- Per-site web_server picker (Nginx default; Apache/OLS catalog entries reserved for V0.3+).
+- On-demand engine bundle installer with pinned arm64 sha256 hashes for dnsmasq, nginx, and PHP, downloaded from the `forge-engines` release artifacts.
+- English + Vietnamese i18n bundles for the sidebar, wizard, and Services page.
+- DNS port setting persisted in SQLite (migration `0003_dns_port`), editable from the wizard, and validated against the macOS resolver file.
+- Default landing page (`index.php`) generated for new empty sites — white/blue Delify Forge intro with a one-click `phpinfo()` and a link back to `https://github.com/Delify-Solutions/forge`.
+- Auto document-root detection: when a site has `public/index.php` (or `.html`/`.htm`), Nginx serves from `public/` so Laravel-style projects work out of the box.
+- "Open wizard" entry point on the Services page so the first-run flow can be re-triggered after the initial setup.
+- `forge-disclaim` trampoline binary for spawning supervised engines without inheriting the Tauri parent's TCC permissions.
+
+### Changed
+- First-run wizard blocks the **Continue** button on the DNS step until DNS setup actually succeeds (`setupDnsResolver` + `startDnsmasq` + `startPhpFpm` + `startNginx`), preventing users from finishing the wizard while DNS/resolver is unconfigured.
+- Nginx supervisor cleans up orphan PID files and any stray `nginx` listener on port 80 before spawning, fixing the "old master kept port 80" failure when the previous app session did not exit cleanly.
+- Site config rendering uses quoted paths (`root "..."`, `fastcgi_pass "unix:..."`, `include "..."`) so document roots and runtime paths with spaces render correctly.
+
+### Fixed
+- "No input file specified" on Laravel-style projects: Nginx now points at `public/` automatically when an entrypoint is present there, instead of forcing the project root.
+- Wizard skip-DNS regression that left the wizard closed even though no resolver had been written.
+
 ## [0.0.1-mvp] — 2026-05-23
 
 ### Added
@@ -30,5 +53,6 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - macOS 14+ only. Linux is on the V1.0 roadmap, Windows on V2.0.
 - PHP versioning, alias domains, project scaffolding, database management, API tester, and the cron tab arrive in V0.2 onward.
 
-[Unreleased]: https://github.com/Delify-Solutions/forge/compare/v0.0.1-mvp...HEAD
+[Unreleased]: https://github.com/Delify-Solutions/forge/compare/v0.0.2-mvp...HEAD
+[0.0.2-mvp]: https://github.com/Delify-Solutions/forge/compare/v0.0.1-mvp...v0.0.2-mvp
 [0.0.1-mvp]: https://github.com/Delify-Solutions/forge/releases/tag/v0.0.1-mvp
