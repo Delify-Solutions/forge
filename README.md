@@ -7,6 +7,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS_14%2B-lightgrey.svg)](#)
 [![Status: Alpha](https://img.shields.io/badge/Status-Alpha-orange.svg)](#)
+![CI](https://github.com/Delify-Solutions/forge/actions/workflows/ci.yml/badge.svg)
 
 [English](README.md) · [Tiếng Việt](README.vi.md)
 

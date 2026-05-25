@@ -5,7 +5,7 @@ use tauri::State;
 
 use crate::domain::sites::{self, AddSiteRequest, Site};
 use crate::domain::{logs, nginx, process::ProcessSupervisor};
-use crate::error::ForgeResult;
+use crate::error::{ForgeError, ForgeResult};
 use crate::AppState;
 
 #[tauri::command]
@@ -25,6 +25,35 @@ pub async fn remove_site(state: State<'_, AppState>, id: i64) -> ForgeResult<()>
     sites::remove(&state.pool, id).await?;
     let _ = try_reload(&state.pool, &state.supervisor).await;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn update_site_https(
+    state: State<'_, AppState>,
+    id: i64,
+    enabled: bool,
+) -> ForgeResult<Site> {
+    if enabled {
+        let status = crate::commands::certs::mkcert_status();
+        if !status.found {
+            return Err(ForgeError::Other(
+                "mkcert is not installed. Run: brew install mkcert nss".into(),
+            ));
+        }
+        if !status.ca_installed {
+            return Err(ForgeError::Other(
+                "mkcert CA is not installed. Click \"Install local CA\" in the banner.".into(),
+            ));
+        }
+    }
+
+    let site = sites::update_https_enabled(&state.pool, id, enabled).await?;
+    if let Err(e) = try_reload(&state.pool, &state.supervisor).await {
+        // Roll back on failure so the DB doesn't say enabled while config failed.
+        let _ = sites::update_https_enabled(&state.pool, id, !enabled).await;
+        return Err(e);
+    }
+    Ok(site)
 }
 
 #[tauri::command]

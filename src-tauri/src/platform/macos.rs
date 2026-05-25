@@ -319,6 +319,10 @@ pub fn detect_editor() -> Option<(PathBuf, &'static str)> {
 
 /// Open `path` in the detected editor. If no editor is found, returns a typed
 /// error that the UI can display as a friendly message.
+pub fn detect_mkcert() -> Option<DetectedBinary> {
+    detect_binary("mkcert", &["-version"])
+}
+
 pub fn open_in_editor(path: &Path) -> ForgeResult<()> {
     let Some((binary, _name)) = detect_editor() else {
         return Err(ForgeError::Other(

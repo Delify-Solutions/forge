@@ -12,6 +12,7 @@ use sqlx::SqlitePool;
 use tera::{Context, Tera};
 use tokio::process::Command;
 
+use crate::domain::certs;
 use crate::domain::process::{kill_orphan_pidfile, ProcessSpec, ProcessSupervisor};
 use crate::domain::sites::{self, Site};
 use crate::error::{ForgeError, ForgeResult};
@@ -29,6 +30,7 @@ struct SiteCtx {
     document_root: String,
     domain: String,
     aliases: Vec<String>,
+    https_enabled: bool,
 }
 
 impl From<Site> for SiteCtx {
@@ -40,6 +42,7 @@ impl From<Site> for SiteCtx {
             document_root: document_root.to_string_lossy().to_string(),
             domain: s.domain,
             aliases: s.aliases,
+            https_enabled: s.https_enabled,
         }
     }
 }
@@ -145,6 +148,22 @@ pub async fn regenerate(pool: &SqlitePool) -> ForgeResult<()> {
     for site in &sites {
         let php_socket = php_socket_for(&site.php_version);
 
+        // Cert lifecycle: ensure cert exists when HTTPS is on, delete when off.
+        let (cert_crt, cert_key) = if site.https_enabled {
+            let mut hosts: Vec<String> = vec![site.domain.clone()];
+            hosts.extend(site.aliases.iter().cloned());
+            hosts.sort();
+            certs::ensure_cert(&site.name, &hosts)?;
+            let paths = certs::cert_paths(&site.name);
+            (
+                paths.crt.to_string_lossy().to_string(),
+                paths.key.to_string_lossy().to_string(),
+            )
+        } else {
+            certs::delete_cert(&site.name);
+            (String::new(), String::new())
+        };
+
         let mut ctx = Context::new();
         ctx.insert("site", &SiteCtx::from(site.clone()));
         ctx.insert("logs_dir", &logs_dir().to_string_lossy().to_string());
@@ -153,6 +172,8 @@ pub async fn regenerate(pool: &SqlitePool) -> ForgeResult<()> {
         ctx.insert("engine", &site.web_server);
         ctx.insert("apache_addr", APACHE_GATEWAY_ADDR);
         ctx.insert("ols_addr", OLS_GATEWAY_ADDR);
+        ctx.insert("cert_crt", &cert_crt);
+        ctx.insert("cert_key", &cert_key);
 
         let rendered = tera
             .render("site.conf.tera", &ctx)
@@ -288,6 +309,7 @@ mod tests {
                     "staging.myapp.test".to_string(),
                     "old-myapp.test".to_string(),
                 ],
+                https_enabled: false,
             },
         );
         site_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
@@ -314,6 +336,7 @@ mod tests {
                 document_root: "/Users/me/Code/blog/public".to_string(),
                 domain: "blog.test".to_string(),
                 aliases: Vec::new(),
+                https_enabled: false,
             },
         );
         apache_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
@@ -340,6 +363,7 @@ mod tests {
                 document_root: "/Users/me/Code/shop/public".to_string(),
                 domain: "shop.test".to_string(),
                 aliases: Vec::new(),
+                https_enabled: false,
             },
         );
         ols_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
@@ -354,5 +378,119 @@ mod tests {
         assert!(rendered.contains("server_name shop.test;"));
         assert!(rendered.contains(&format!("proxy_pass http://{};", OLS_GATEWAY_ADDR)));
         assert!(!rendered.contains("fastcgi_pass"));
+
+        // HTTPS-enabled nginx site: must have redirect block + 443 ssl block.
+        let mut https_nginx_ctx = Context::new();
+        https_nginx_ctx.insert(
+            "site",
+            &SiteCtx {
+                name: "secure".to_string(),
+                path: "/Users/me/Code/secure".to_string(),
+                document_root: "/Users/me/Code/secure/public".to_string(),
+                domain: "secure.test".to_string(),
+                aliases: Vec::new(),
+                https_enabled: true,
+            },
+        );
+        https_nginx_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
+        https_nginx_ctx.insert("nginx_prefix", "/opt/homebrew");
+        https_nginx_ctx.insert("php_socket", "/tmp/forge/php.sock");
+        https_nginx_ctx.insert("engine", "nginx");
+        https_nginx_ctx.insert("apache_addr", APACHE_GATEWAY_ADDR);
+        https_nginx_ctx.insert("ols_addr", OLS_GATEWAY_ADDR);
+        https_nginx_ctx.insert("cert_crt", "/tmp/forge/runtime/certs/secure.crt");
+        https_nginx_ctx.insert("cert_key", "/tmp/forge/runtime/certs/secure.key");
+        let rendered = tera
+            .render("site.conf.tera", &https_nginx_ctx)
+            .expect("https nginx site config renders");
+        assert!(rendered.contains("return 301 https://$host$request_uri;"));
+        assert!(rendered.contains("listen 443 ssl http2;"));
+        assert!(rendered.contains("ssl_certificate \"/tmp/forge/runtime/certs/secure.crt\";"));
+        assert!(rendered.contains("ssl_certificate_key \"/tmp/forge/runtime/certs/secure.key\";"));
+        assert!(!rendered.contains("proxy_pass"));
+
+        // HTTPS-enabled apache site: must have X-Forwarded-Proto https.
+        let mut https_apache_ctx = Context::new();
+        https_apache_ctx.insert(
+            "site",
+            &SiteCtx {
+                name: "secblog".to_string(),
+                path: "/Users/me/Code/secblog".to_string(),
+                document_root: "/Users/me/Code/secblog/public".to_string(),
+                domain: "secblog.test".to_string(),
+                aliases: Vec::new(),
+                https_enabled: true,
+            },
+        );
+        https_apache_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
+        https_apache_ctx.insert("nginx_prefix", "/opt/homebrew");
+        https_apache_ctx.insert("php_socket", "/tmp/forge/php.sock");
+        https_apache_ctx.insert("engine", "apache");
+        https_apache_ctx.insert("apache_addr", APACHE_GATEWAY_ADDR);
+        https_apache_ctx.insert("ols_addr", OLS_GATEWAY_ADDR);
+        https_apache_ctx.insert("cert_crt", "/tmp/forge/runtime/certs/secblog.crt");
+        https_apache_ctx.insert("cert_key", "/tmp/forge/runtime/certs/secblog.key");
+        let rendered = tera
+            .render("site.conf.tera", &https_apache_ctx)
+            .expect("https apache site config renders");
+        assert!(rendered.contains("return 301 https://$host$request_uri;"));
+        assert!(rendered.contains("listen 443 ssl http2;"));
+        assert!(rendered.contains("proxy_set_header X-Forwarded-Proto https;"));
+
+        // HTTPS-enabled OpenLiteSpeed site: must have X-Forwarded-Proto https.
+        let mut https_ols_ctx = Context::new();
+        https_ols_ctx.insert(
+            "site",
+            &SiteCtx {
+                name: "secshop".to_string(),
+                path: "/Users/me/Code/secshop".to_string(),
+                document_root: "/Users/me/Code/secshop/public".to_string(),
+                domain: "secshop.test".to_string(),
+                aliases: Vec::new(),
+                https_enabled: true,
+            },
+        );
+        https_ols_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
+        https_ols_ctx.insert("nginx_prefix", "/opt/homebrew");
+        https_ols_ctx.insert("php_socket", "/tmp/forge/php.sock");
+        https_ols_ctx.insert("engine", "openlitespeed");
+        https_ols_ctx.insert("apache_addr", APACHE_GATEWAY_ADDR);
+        https_ols_ctx.insert("ols_addr", OLS_GATEWAY_ADDR);
+        https_ols_ctx.insert("cert_crt", "/tmp/forge/runtime/certs/secshop.crt");
+        https_ols_ctx.insert("cert_key", "/tmp/forge/runtime/certs/secshop.key");
+        let rendered = tera
+            .render("site.conf.tera", &https_ols_ctx)
+            .expect("https ols site config renders");
+        assert!(rendered.contains("return 301 https://$host$request_uri;"));
+        assert!(rendered.contains("listen 443 ssl http2;"));
+        assert!(rendered.contains("proxy_set_header X-Forwarded-Proto https;"));
+
+        // HTTPS-disabled site: only listen 80, no ssl directives.
+        let mut plain_ctx = Context::new();
+        plain_ctx.insert(
+            "site",
+            &SiteCtx {
+                name: "plain".to_string(),
+                path: "/Users/me/Code/plain".to_string(),
+                document_root: "/Users/me/Code/plain".to_string(),
+                domain: "plain.test".to_string(),
+                aliases: Vec::new(),
+                https_enabled: false,
+            },
+        );
+        plain_ctx.insert("logs_dir", "/tmp/forge/logs/nginx");
+        plain_ctx.insert("nginx_prefix", "/opt/homebrew");
+        plain_ctx.insert("php_socket", "/tmp/forge/php.sock");
+        plain_ctx.insert("engine", "nginx");
+        plain_ctx.insert("apache_addr", APACHE_GATEWAY_ADDR);
+        plain_ctx.insert("ols_addr", OLS_GATEWAY_ADDR);
+        plain_ctx.insert("cert_crt", "");
+        plain_ctx.insert("cert_key", "");
+        let rendered = tera
+            .render("site.conf.tera", &plain_ctx)
+            .expect("plain site config renders");
+        assert!(rendered.contains("listen 80;"));
+        assert!(!rendered.contains("listen 443"));
+        assert!(!rendered.contains("ssl_certificate"));
     }
 }

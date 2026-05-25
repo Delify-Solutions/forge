@@ -3,6 +3,7 @@ import { Channel } from '@tauri-apps/api/core';
 import type {
     BundleEntry,
     InstallProgress,
+    MkcertStatus,
     ProcessStatus,
     Site,
     SiteLogsTail,
@@ -55,4 +56,8 @@ export const tauri = {
     },
     uninstallBundle: (engine: string, version: string) =>
         invoke<void>('uninstall_bundle', { engine, version }),
+    mkcertStatus: () => invoke<MkcertStatus>('mkcert_status'),
+    installMkcertCa: () => invoke<void>('install_mkcert_ca'),
+    updateSiteHttps: (id: number, enabled: boolean) =>
+        invoke<Site>('update_site_https', { id, enabled }),
 };

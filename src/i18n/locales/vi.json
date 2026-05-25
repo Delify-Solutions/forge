@@ -152,6 +152,20 @@
         "editorNone": "Không tìm thấy editor. Cài VS Code (`code`), Cursor hoặc Sublime (`subl`).",
         "searchPlaceholder": "Tìm site…",
         "searchClear": "Xoá tìm kiếm",
-        "searchNoMatches": "Không có site nào khớp \"{{query}}\"."
+        "searchNoMatches": "Không có site nào khớp \"{{query}}\".",
+        "httpsHeader": "HTTPS",
+        "httpsLabel": "HTTPS",
+        "httpsEnable": "Bật HTTPS",
+        "httpsDisable": "Tắt HTTPS",
+        "httpsBusy": "Đang cập nhật HTTPS…",
+        "httpsBlockedNoMkcert": "mkcert chưa được cài đặt",
+        "httpsBlockedNoCa": "CA của mkcert chưa được cài đặt",
+        "httpsBannerInstallMkcert": "mkcert chưa được cài đặt. Chạy: brew install mkcert nss",
+        "httpsBannerInstallCa": "CA mkcert cục bộ chưa được tin cậy. Cài đặt để trình duyệt chấp nhận chứng chỉ HTTPS.",
+        "httpsBannerInstalling": "Đang cài…",
+        "httpsCaInstallAction": "Cài CA cục bộ",
+        "httpsCaInstalled": "Đã cài CA cục bộ thành công.",
+        "httpsCaInstallFailed": "Cài CA thất bại.",
+        "httpsReadyToast": "Đã cập nhật HTTPS."
     }
 }

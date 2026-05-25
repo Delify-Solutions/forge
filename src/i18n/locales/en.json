@@ -152,6 +152,20 @@
         "editorNone": "No editor found. Install VS Code (`code`), Cursor, or Sublime (`subl`).",
         "searchPlaceholder": "Search sites…",
         "searchClear": "Clear search",
-        "searchNoMatches": "No sites match \"{{query}}\"."
+        "searchNoMatches": "No sites match \"{{query}}\".",
+        "httpsHeader": "HTTPS",
+        "httpsLabel": "HTTPS",
+        "httpsEnable": "Enable HTTPS",
+        "httpsDisable": "Disable HTTPS",
+        "httpsBusy": "Updating HTTPS…",
+        "httpsBlockedNoMkcert": "mkcert is not installed",
+        "httpsBlockedNoCa": "mkcert CA is not installed",
+        "httpsBannerInstallMkcert": "mkcert is not installed. Run: brew install mkcert nss",
+        "httpsBannerInstallCa": "The local mkcert CA is not trusted yet. Install it so browsers accept HTTPS certificates.",
+        "httpsBannerInstalling": "Installing…",
+        "httpsCaInstallAction": "Install local CA",
+        "httpsCaInstalled": "Local CA installed successfully.",
+        "httpsCaInstallFailed": "CA install failed.",
+        "httpsReadyToast": "HTTPS updated."
     }
 }

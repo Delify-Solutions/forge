@@ -8,7 +8,14 @@ export interface Site {
     aliases: string[];
     phpVersion: string;
     webServer: WebServer;
+    httpsEnabled: boolean;
     createdAt: string;
+}
+
+export interface MkcertStatus {
+    found: boolean;
+    version?: string;
+    caInstalled: boolean;
 }
 
 export interface PortStatus {

@@ -17,6 +17,7 @@ pub struct Site {
     pub aliases: Vec<String>,
     pub php_version: String,
     pub web_server: String,
+    pub https_enabled: bool,
     pub created_at: String,
 }
 
@@ -55,15 +56,15 @@ fn validate_web_server(value: &str) -> ForgeResult<()> {
 }
 
 pub async fn list(pool: &SqlitePool) -> ForgeResult<Vec<Site>> {
-    let rows = sqlx::query_as::<_, (i64, String, String, String, String, String)>(
-        "SELECT id, name, path, php_version, web_server, created_at FROM sites ORDER BY created_at DESC, id DESC",
+    let rows = sqlx::query_as::<_, (i64, String, String, String, String, bool, String)>(
+        "SELECT id, name, path, php_version, web_server, https_enabled, created_at FROM sites ORDER BY created_at DESC, id DESC",
     )
     .fetch_all(pool)
     .await
     .map_err(|e| ForgeError::Other(format!("list sites: {e}")))?;
 
     let mut sites = Vec::with_capacity(rows.len());
-    for (id, name, path, php_version, web_server, created_at) in rows {
+    for (id, name, path, php_version, web_server, https_enabled, created_at) in rows {
         let aliases = fetch_aliases(pool, id).await?;
         sites.push(Site {
             domain: format!("{name}.test"),
@@ -73,6 +74,7 @@ pub async fn list(pool: &SqlitePool) -> ForgeResult<Vec<Site>> {
             path,
             php_version,
             web_server,
+            https_enabled,
             created_at,
         });
     }
@@ -223,6 +225,21 @@ pub async fn update_web_server(pool: &SqlitePool, id: i64, web_server: &str) -> 
     fetch_site(pool, id).await
 }
 
+pub async fn update_https_enabled(pool: &SqlitePool, id: i64, enabled: bool) -> ForgeResult<Site> {
+    let result = sqlx::query("UPDATE sites SET https_enabled = ? WHERE id = ?")
+        .bind(enabled)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| ForgeError::Other(format!("update https_enabled: {e}")))?;
+
+    if result.rows_affected() == 0 {
+        return Err(ForgeError::Other(format!("site {id} not found")));
+    }
+
+    fetch_site(pool, id).await
+}
+
 pub async fn add_alias(pool: &SqlitePool, site_id: i64, alias: &str) -> ForgeResult<Site> {
     let site = fetch_site(pool, site_id).await?;
     let normalized = alias.trim().to_ascii_lowercase();
@@ -263,8 +280,8 @@ pub async fn remove_alias(pool: &SqlitePool, site_id: i64, alias: &str) -> Forge
 }
 
 pub async fn fetch_site(pool: &SqlitePool, id: i64) -> ForgeResult<Site> {
-    let row = sqlx::query_as::<_, (i64, String, String, String, String, String)>(
-        "SELECT id, name, path, php_version, web_server, created_at FROM sites WHERE id = ?",
+    let row = sqlx::query_as::<_, (i64, String, String, String, String, bool, String)>(
+        "SELECT id, name, path, php_version, web_server, https_enabled, created_at FROM sites WHERE id = ?",
     )
     .bind(id)
     .fetch_one(pool)
@@ -280,7 +297,8 @@ pub async fn fetch_site(pool: &SqlitePool, id: i64) -> ForgeResult<Site> {
         path: row.2,
         php_version: row.3,
         web_server: row.4,
-        created_at: row.5,
+        https_enabled: row.5,
+        created_at: row.6,
     })
 }
 
@@ -461,6 +479,7 @@ mod tests {
             aliases: vec![],
             php_version: "8.3".into(),
             web_server: "nginx".into(),
+            https_enabled: false,
             created_at: "2026-05-26".into(),
         }
     }
@@ -496,5 +515,62 @@ mod tests {
         assert!(validate_alias("shopgame.test", &site, &taken).is_err());
         let long_label = format!("{}.myapp.test", "a".repeat(64));
         assert!(validate_alias(&long_label, &site, &taken).is_err());
+    }
+
+    #[test]
+    fn https_enabled_defaults_false() {
+        let site = sample_site();
+        assert!(!site.https_enabled);
+    }
+
+    async fn make_test_pool() -> sqlx::SqlitePool {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("in-memory pool");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("migrate");
+        pool
+    }
+
+    #[tokio::test]
+    async fn update_https_enabled_persists_and_returns_new_value() {
+        let pool = make_test_pool().await;
+        let tmp = std::env::temp_dir().join(format!(
+            "forge-https-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let site = add(
+            &pool,
+            crate::domain::sites::AddSiteRequest {
+                name: "testsite".into(),
+                path: tmp.to_string_lossy().to_string(),
+                php_version: Some("8.3".into()),
+                web_server: Some("nginx".into()),
+            },
+        )
+        .await
+        .expect("add site");
+
+        assert!(!site.https_enabled, "default should be false");
+
+        let updated = update_https_enabled(&pool, site.id, true)
+            .await
+            .expect("enable https");
+        assert!(updated.https_enabled, "should be true after enable");
+
+        let disabled = update_https_enabled(&pool, site.id, false)
+            .await
+            .expect("disable https");
+        assert!(!disabled.https_enabled, "should be false after disable");
+
+        std::fs::remove_dir_all(tmp).ok();
     }
 }

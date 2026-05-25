@@ -100,10 +100,23 @@ pub async fn services_status(state: State<'_, AppState>) -> ForgeResult<Vec<Proc
 #[cfg(target_os = "macos")]
 #[tauri::command]
 pub async fn debug_reset_environment(state: State<'_, AppState>) -> ForgeResult<()> {
+    use crate::domain::certs;
     use crate::platform::macos as plat;
     use crate::store;
 
     state.supervisor.shutdown_all().await;
+
+    // Best-effort per-site cert cleanup before wiping the runtime dir.
+    if let Ok(sites) = crate::domain::sites::list(&state.pool).await {
+        for site in &sites {
+            certs::delete_cert(&site.name);
+        }
+    }
+
+    // Uninstall mkcert CA if present (best effort, swallow errors).
+    if plat::detect_mkcert().is_some() && certs::ca_installed() {
+        let _ = tokio::task::spawn_blocking(certs::uninstall_ca).await;
+    }
 
     let data_dir = store::data_dir();
     for name in ["engines", "runtime", "logs"] {

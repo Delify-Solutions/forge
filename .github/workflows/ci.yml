@@ -1,0 +1,57 @@
+name: CI
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    build:
+        runs-on: macos-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 9
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: pnpm
+
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt, clippy
+
+            - name: Cache Cargo
+              uses: Swatinem/rust-cache@v2
+              with:
+                  workspaces: src-tauri -> target
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Check Rust formatting
+              run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+            - name: Run Clippy
+              run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+
+            - name: Run Rust tests
+              run: cargo test --manifest-path src-tauri/Cargo.toml --all-features
+
+            - name: Build frontend
+              run: pnpm build
