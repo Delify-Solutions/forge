@@ -365,9 +365,11 @@ fn editor_app_name(candidate: &str) -> Option<&'static str> {
 }
 
 fn application_bundle_exists(app_name: &str) -> bool {
-    let user_apps = std::env::var("HOME")
-        .ok()
-        .map(|h| PathBuf::from(h).join("Applications").join(format!("{app_name}.app")));
+    let user_apps = std::env::var("HOME").ok().map(|h| {
+        PathBuf::from(h)
+            .join("Applications")
+            .join(format!("{app_name}.app"))
+    });
     let system_app = PathBuf::from(format!("/Applications/{app_name}.app"));
     if system_app.is_dir() {
         return true;
@@ -378,6 +380,28 @@ fn application_bundle_exists(app_name: &str) -> bool {
         }
     }
     false
+}
+
+/// Open a new Terminal.app window with the working directory set to `path`.
+/// Fire-and-forget: we spawn and drop the child so the command returns
+/// immediately without waiting for Terminal.app to exit.
+pub fn open_terminal(path: &Path) -> ForgeResult<()> {
+    let path_str = path.to_string_lossy();
+    // Escape backslashes and double quotes for the AppleScript string literal.
+    // Single quotes do not need escaping inside AppleScript double-quoted strings.
+    let escaped = path_str.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        r#"tell application "Terminal"
+    activate
+    do script "cd \"{escaped}\""
+end tell"#
+    );
+    let _child = Command::new("/usr/bin/osascript")
+        .arg("-e")
+        .arg(&script)
+        .spawn()
+        .map_err(|e| ForgeError::Other(format!("open_terminal failed: {e}")))?;
+    Ok(())
 }
 
 /// Open `path` in the detected editor. If no editor is found, returns a typed

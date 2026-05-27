@@ -139,6 +139,7 @@
         "aliasClose": "Đóng",
         "actionOpen": "Mở",
         "actionReveal": "Mở thư mục",
+        "actionTerminal": "Mở trong Terminal",
         "actionEditor": "Editor",
         "actionLogs": "Logs",
         "logsDialogTitle": "Logs cho {{domain}}",

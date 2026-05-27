@@ -72,6 +72,7 @@ pub fn run() {
             commands::sites::open_site_url,
             commands::sites::reveal_site_path,
             commands::sites::open_site_in_editor,
+            commands::sites::open_site_terminal,
             commands::sites::tail_site_logs,
             commands::certs::mkcert_status,
             commands::certs::install_mkcert_ca,

@@ -39,6 +39,7 @@ export const tauri = {
     openSiteUrl: (id: number) => invoke<void>('open_site_url', { id }),
     revealSitePath: (id: number) => invoke<void>('reveal_site_path', { id }),
     openSiteInEditor: (id: number) => invoke<void>('open_site_in_editor', { id }),
+    openSiteTerminal: (id: number) => invoke<void>('open_site_terminal', { id }),
     tailSiteLogs: (id: number) => invoke<SiteLogsTail>('tail_site_logs', { id }),
     listBundles: () => invoke<BundleEntry[]>('list_bundles'),
     installBundle: (

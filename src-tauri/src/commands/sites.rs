@@ -130,6 +130,13 @@ pub async fn open_site_in_editor(state: State<'_, AppState>, id: i64) -> ForgeRe
 }
 
 #[tauri::command]
+pub async fn open_site_terminal(state: State<'_, AppState>, id: i64) -> ForgeResult<()> {
+    let site = sites::fetch_site(&state.pool, id).await?;
+    let path = std::path::PathBuf::from(&site.path);
+    crate::platform::macos::open_terminal(&path)
+}
+
+#[tauri::command]
 pub async fn tail_site_logs(state: State<'_, AppState>, id: i64) -> ForgeResult<SiteLogsTail> {
     let site = sites::fetch_site(&state.pool, id).await?;
     let data_dir = crate::store::data_dir();

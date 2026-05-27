@@ -9,6 +9,7 @@ import {
     Loader2,
     Plus,
     Search,
+    Terminal,
     Trash2,
     AlertTriangle,
     Link2,
@@ -456,6 +457,16 @@ function SiteTable({
                                             }
                                         >
                                             <FolderOpen />
+                                        </IconActionButton>
+                                        <IconActionButton
+                                            label={t('sites.actionTerminal')}
+                                            onClick={() =>
+                                                runAction(() =>
+                                                    tauri.openSiteTerminal(site.id),
+                                                )
+                                            }
+                                        >
+                                            <Terminal />
                                         </IconActionButton>
                                         <IconActionButton
                                             label={t('sites.actionEditor')}

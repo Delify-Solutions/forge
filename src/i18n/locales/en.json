@@ -139,6 +139,7 @@
         "aliasClose": "Close",
         "actionOpen": "Open",
         "actionReveal": "Reveal",
+        "actionTerminal": "Open in Terminal",
         "actionEditor": "Editor",
         "actionLogs": "Logs",
         "logsDialogTitle": "Logs for {{domain}}",
