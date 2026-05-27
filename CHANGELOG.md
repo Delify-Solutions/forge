@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [0.0.3-mvp] — 2026-05-27
+
 ### Added
+- Per-site "Open in Terminal" quick action: each site row gets a Terminal button that opens Terminal.app with the working directory `cd`'d to the site path. Path is resolved from SQLite, never from frontend input.
 - Per-site HTTPS via mkcert: each site can opt into locally trusted HTTPS with certificates covering the primary `.test` domain and aliases.
 - Sites page HTTPS switch and mkcert banner for missing mkcert or local CA setup.
 - GitHub Actions CI workflow on `macos-latest` for Rust formatting, clippy, tests, and frontend build.
@@ -19,6 +22,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Sites page now includes a case-insensitive search field for names, domains, paths, and aliases.
 - Logs dialog tabs now follow the ARIA tab pattern with keyboard navigation and a focusable panel.
 - Log tailing now distinguishes missing files from permission, seek, and read errors so unreadable logs are surfaced to users.
+- Sites table now keeps the row action buttons (including delete) visible on narrow viewports by truncating the path column and allowing horizontal scroll when needed.
+- `Cargo.toml` declares `default-run = "delify-forge"` so `cargo run` is unambiguous now that the workspace ships a second binary (`forge-disclaim`).
+
+### Fixed
+- Editor detection no longer fails when the Tauri app bundle inherits launchd's minimal PATH: detection now augments PATH with `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, and per-user bin directories, and falls back to `open -a "<App>"` for VS Code / Cursor / Sublime when only the `.app` bundle is present.
 
 ## [0.0.2-mvp] — 2026-05-26
 
@@ -66,6 +74,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - macOS 14+ only. Linux is on the V1.0 roadmap, Windows on V2.0.
 - PHP versioning, alias domains, project scaffolding, database management, API tester, and the cron tab arrive in V0.2 onward.
 
-[Unreleased]: https://github.com/Delify-Solutions/forge/compare/v0.0.2-mvp...HEAD
+[Unreleased]: https://github.com/Delify-Solutions/forge/compare/v0.0.3-mvp...HEAD
+[0.0.3-mvp]: https://github.com/Delify-Solutions/forge/compare/v0.0.2-mvp...v0.0.3-mvp
 [0.0.2-mvp]: https://github.com/Delify-Solutions/forge/compare/v0.0.1-mvp...v0.0.2-mvp
 [0.0.1-mvp]: https://github.com/Delify-Solutions/forge/releases/tag/v0.0.1-mvp
