@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::domain::scaffold::{self, ProjectTemplate};
 use crate::domain::sites::{self, AddSiteRequest, Site};
+use crate::domain::tools::{self, MacosDetector, ToolKind};
 use crate::domain::{logs, nginx, process::ProcessSupervisor};
 use crate::error::{ForgeError, ForgeResult};
 use crate::AppState;
@@ -126,14 +128,20 @@ pub async fn reveal_site_path(state: State<'_, AppState>, id: i64) -> ForgeResul
 pub async fn open_site_in_editor(state: State<'_, AppState>, id: i64) -> ForgeResult<()> {
     let site = sites::fetch_site(&state.pool, id).await?;
     let path = std::path::PathBuf::from(&site.path);
-    crate::platform::macos::open_in_editor(&path)
+    let slug = tools::read_preference(&state.pool, ToolKind::Editor).await?;
+    let detector = MacosDetector;
+    let plan = tools::resolve(ToolKind::Editor, &slug, &detector);
+    crate::platform::macos::execute_editor(&plan, &path)
 }
 
 #[tauri::command]
 pub async fn open_site_terminal(state: State<'_, AppState>, id: i64) -> ForgeResult<()> {
     let site = sites::fetch_site(&state.pool, id).await?;
     let path = std::path::PathBuf::from(&site.path);
-    crate::platform::macos::open_terminal(&path)
+    let slug = tools::read_preference(&state.pool, ToolKind::Terminal).await?;
+    let detector = MacosDetector;
+    let plan = tools::resolve(ToolKind::Terminal, &slug, &detector);
+    crate::platform::macos::execute_terminal(&plan, &path)
 }
 
 #[tauri::command]
@@ -153,6 +161,68 @@ pub async fn tail_site_logs(state: State<'_, AppState>, id: i64) -> ForgeResult<
         error_missing: error_result.missing,
         access_missing: access_result.missing,
     })
+}
+
+/// Status of the `composer` binary on the user's PATH.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComposerStatus {
+    pub found: bool,
+    pub version: Option<String>,
+}
+
+#[tauri::command]
+pub fn composer_status() -> ComposerStatus {
+    match crate::platform::macos::detect_composer() {
+        Some(binary) => ComposerStatus {
+            found: true,
+            version: binary.version,
+        },
+        None => ComposerStatus {
+            found: false,
+            version: None,
+        },
+    }
+}
+
+/// Request body for `scaffold_and_add_site`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScaffoldAndAddSiteRequest {
+    pub template: ProjectTemplate,
+    #[serde(flatten)]
+    pub site: AddSiteRequest,
+}
+
+#[tauri::command]
+pub async fn scaffold_and_add_site(
+    state: State<'_, AppState>,
+    req: ScaffoldAndAddSiteRequest,
+) -> ForgeResult<Site> {
+    let path = std::path::PathBuf::from(&req.site.path);
+
+    // Run scaffolding synchronously on a blocking thread so we don't block
+    // the async executor during the (potentially long) composer run.
+    let template = req.template.clone();
+    let path_clone = path.clone();
+    let outcome = tokio::task::spawn_blocking(move || scaffold::scaffold(&template, &path_clone))
+        .await
+        .map_err(|e| ForgeError::Other(e.to_string()))??;
+
+    // Register the site in the DB.
+    let site_result = sites::add(&state.pool, req.site).await;
+
+    match site_result {
+        Ok(site) => {
+            let _ = try_reload(&state.pool, &state.supervisor).await;
+            Ok(site)
+        }
+        Err(e) => {
+            // DB insert failed — roll back any folder Forge created.
+            scaffold::rollback(&path, &outcome);
+            Err(e)
+        }
+    }
 }
 
 async fn try_reload(pool: &sqlx::SqlitePool, supervisor: &ProcessSupervisor) -> ForgeResult<()> {

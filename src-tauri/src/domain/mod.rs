@@ -7,4 +7,6 @@ pub mod logs;
 pub mod nginx;
 pub mod php;
 pub mod process;
+pub mod scaffold;
 pub mod sites;
+pub mod tools;

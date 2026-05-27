@@ -29,7 +29,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { tauri } from '@/lib/tauri';
-import type { MkcertStatus, Site, SiteLogsTail, WebServer } from '@/types';
+import type { ComposerStatus, MkcertStatus, ProjectTemplate, Site, SiteLogsTail, WebServer } from '@/types';
 
 export function Sites() {
     const { t } = useTranslation();
@@ -795,7 +795,9 @@ function AddSiteDialog({
     const [path, setPath] = useState('');
     const [phpVersion, setPhpVersion] = useState('');
     const [webServer, setWebServer] = useState<WebServer>('nginx');
+    const [template, setTemplate] = useState<ProjectTemplate>('none');
     const [phpLines, setPhpLines] = useState<string[]>([]);
+    const [composerStatus, setComposerStatus] = useState<ComposerStatus | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [err, setErr] = useState<string | null>(null);
 
@@ -808,6 +810,7 @@ function AddSiteDialog({
                     setPhpVersion((prev) => prev || lines[0]);
                 }
             });
+            tauri.composerStatus().then(setComposerStatus);
         }
     }, [open]);
 
@@ -816,6 +819,7 @@ function AddSiteDialog({
         setPath('');
         setPhpVersion(phpLines.length > 0 ? phpLines[0] : '');
         setWebServer('nginx');
+        setTemplate('none');
         setErr(null);
     };
 
@@ -847,16 +851,28 @@ function AddSiteDialog({
         setErr(null);
         setSubmitting(true);
         try {
-            await tauri.addSite(name, path, phpVersion || undefined, webServer);
+            if (template === 'none') {
+                await tauri.addSite(name, path, phpVersion || undefined, webServer);
+            } else {
+                await tauri.scaffoldAndAddSite(
+                    template,
+                    name,
+                    path,
+                    phpVersion || undefined,
+                    webServer,
+                );
+            }
             reset();
             onOpenChange(false);
             onAdded();
         } catch (e) {
-            setErr(e instanceof Error ? e.message : 'Failed to add site.');
+            setErr(e instanceof Error ? e.message : t('sites.scaffoldFailed'));
         } finally {
             setSubmitting(false);
         }
     };
+
+    const composerMissing = composerStatus !== null && !composerStatus.found;
 
     return (
         <Dialog
@@ -875,6 +891,32 @@ function AddSiteDialog({
                 </DialogHeader>
 
                 <div className="space-y-3">
+                    {composerMissing && (
+                        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                            <p className="font-medium">{t('sites.composerMissingTitle')}</p>
+                            <p className="mt-0.5 text-muted-foreground">{t('sites.composerMissingHint')}</p>
+                        </div>
+                    )}
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">
+                            {t('sites.templateLabel')}
+                        </label>
+                        <select
+                            value={template}
+                            onChange={(e) => setTemplate(e.target.value as ProjectTemplate)}
+                            className="h-9 w-full rounded-md border border-input bg-muted/50 px-3 text-sm"
+                        >
+                            <option value="none">{t('sites.templateNone')}</option>
+                            <option value="plainPhp">{t('sites.templatePlainPhp')}</option>
+                            <option value="static">{t('sites.templateStatic')}</option>
+                            <option value="laravel" disabled={composerMissing}>
+                                {t('sites.templateLaravel')}
+                                {composerMissing ? ` (${t('sites.composerRequired')})` : ''}
+                            </option>
+                        </select>
+                    </div>
+
                     <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">
                             {t('sites.folderLabel')}
@@ -984,7 +1026,9 @@ function AddSiteDialog({
                         disabled={submitting || !name || !path || phpLines.length === 0}
                     >
                         {submitting && <Loader2 className="animate-spin" />}
-                        {t('sites.save')}
+                        {submitting && template !== 'none'
+                            ? t('sites.scaffoldingInProgress')
+                            : t('sites.save')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

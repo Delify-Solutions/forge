@@ -2,12 +2,18 @@ import { invoke } from '@tauri-apps/api/core';
 import { Channel } from '@tauri-apps/api/core';
 import type {
     BundleEntry,
+    ComposerStatus,
     InstallProgress,
     MkcertStatus,
+    PreferredTools,
     ProcessStatus,
+    ProjectTemplate,
     Site,
     SiteLogsTail,
     SystemReport,
+    ToolCatalog,
+    ToolKind,
+    ToolSlug,
 } from '@/types';
 
 export const tauri = {
@@ -61,4 +67,19 @@ export const tauri = {
     installMkcertCa: () => invoke<void>('install_mkcert_ca'),
     updateSiteHttps: (id: number, enabled: boolean) =>
         invoke<Site>('update_site_https', { id, enabled }),
+    composerStatus: () => invoke<ComposerStatus>('composer_status'),
+    scaffoldAndAddSite: (
+        template: ProjectTemplate,
+        name: string,
+        path: string,
+        phpVersion?: string,
+        webServer?: string,
+    ) =>
+        invoke<Site>('scaffold_and_add_site', {
+            req: { template, name, path, phpVersion, webServer },
+        }),
+    listToolCatalog: () => invoke<ToolCatalog>('list_tool_catalog'),
+    getPreferredTools: () => invoke<PreferredTools>('get_preferred_tools'),
+    setPreferredTool: (kind: ToolKind, slug: ToolSlug) =>
+        invoke<void>('set_preferred_tool', { kind, slug }),
 };

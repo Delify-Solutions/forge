@@ -4,4 +4,5 @@ pub mod bundles;
 pub mod certs;
 pub mod sites;
 pub mod system;
+pub mod tools;
 pub mod wizard;

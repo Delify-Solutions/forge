@@ -74,6 +74,8 @@ pub fn run() {
             commands::sites::open_site_in_editor,
             commands::sites::open_site_terminal,
             commands::sites::tail_site_logs,
+            commands::sites::composer_status,
+            commands::sites::scaffold_and_add_site,
             commands::certs::mkcert_status,
             commands::certs::install_mkcert_ca,
             commands::wizard::set_dns_port,
@@ -91,6 +93,9 @@ pub fn run() {
             commands::bundles::list_bundles,
             commands::bundles::install_bundle,
             commands::bundles::uninstall_bundle,
+            commands::tools::list_tool_catalog,
+            commands::tools::get_preferred_tools,
+            commands::tools::set_preferred_tool,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

@@ -1,5 +1,7 @@
 export type WebServer = 'nginx' | 'apache' | 'openlitespeed';
 
+export type ProjectTemplate = 'none' | 'plainPhp' | 'static' | 'laravel';
+
 export interface Site {
     id: number;
     name: string;
@@ -16,6 +18,11 @@ export interface MkcertStatus {
     found: boolean;
     version?: string;
     caInstalled: boolean;
+}
+
+export interface ComposerStatus {
+    found: boolean;
+    version?: string;
 }
 
 export interface PortStatus {
@@ -52,6 +59,10 @@ export interface AddSiteRequest {
     webServer?: WebServer;
 }
 
+export interface ScaffoldAndAddSiteRequest extends AddSiteRequest {
+    template: ProjectTemplate;
+}
+
 export interface ProcessStatus {
     name: string;
     state: 'stopped' | 'running' | 'crashed';
@@ -83,4 +94,26 @@ export interface SiteLogsTail {
     access: string[];
     errorMissing: boolean;
     accessMissing: boolean;
+}
+
+export type ToolKind = 'editor' | 'terminal';
+
+export type ToolSlug = string;
+
+export interface ToolCatalogEntry {
+    slug: ToolSlug;
+    label: string;
+    cli: string | null;
+    bundle: string | null;
+    installed: boolean;
+}
+
+export interface ToolCatalog {
+    editors: ToolCatalogEntry[];
+    terminals: ToolCatalogEntry[];
+}
+
+export interface PreferredTools {
+    editor: ToolSlug;
+    terminal: ToolSlug;
 }
