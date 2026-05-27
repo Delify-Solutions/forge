@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [0.0.4-mvp] — 2026-05-28
+
+### Added
+- "Add Site" dialog gains a **Template** picker (None / Plain PHP / Static HTML / Laravel). Plain PHP and Static HTML write a bundled boilerplate; Laravel runs `composer create-project laravel/laravel <path> --prefer-dist` synchronously with a 120-second timeout. Folders Forge creates are rolled back on failure. Composer is detected via the existing `detect_binary` pattern; the Laravel option is disabled with an inline banner when composer is missing.
+- General page is now a real screen with **Preferred tools** selects for Editor and Terminal, backed by a curated catalog of 10 editors and 8 terminals. Selection persists in the existing `settings` table. `open_site_in_editor` and `open_site_terminal` dispatch through a resolver that prefers CLI, then `.app` bundle, then falls back to the existing auto chain. iTerm2 uses its own AppleScript dialect; Warp / Tabby / Alacritty / Kitty / WezTerm / Ghostty launch via `open -na "<App>" --args ...` with each tool's documented cwd flag.
+- 20 new Rust unit tests covering scaffold templates, composer detection, and the editor/terminal resolver (46 unit tests total).
+
+### Notes
+- V0.2 roadmap milestone closes here: multi-PHP (v0.0.2-mvp), alias domains (v0.0.3-mvp), and project scaffolding (this release). HTTPS+CI, per-site quick actions, search, and preferred tools shipped along the way as bonus features beyond the roadmap.
+
 ## [0.0.3-mvp] — 2026-05-27
 
 ### Added
@@ -74,7 +84,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - macOS 14+ only. Linux is on the V1.0 roadmap, Windows on V2.0.
 - PHP versioning, alias domains, project scaffolding, database management, API tester, and the cron tab arrive in V0.2 onward.
 
-[Unreleased]: https://github.com/Delify-Solutions/forge/compare/v0.0.3-mvp...HEAD
+[Unreleased]: https://github.com/Delify-Solutions/forge/compare/v0.0.4-mvp...HEAD
+[0.0.4-mvp]: https://github.com/Delify-Solutions/forge/compare/v0.0.3-mvp...v0.0.4-mvp
 [0.0.3-mvp]: https://github.com/Delify-Solutions/forge/compare/v0.0.2-mvp...v0.0.3-mvp
 [0.0.2-mvp]: https://github.com/Delify-Solutions/forge/compare/v0.0.1-mvp...v0.0.2-mvp
 [0.0.1-mvp]: https://github.com/Delify-Solutions/forge/releases/tag/v0.0.1-mvp
