@@ -72,11 +72,13 @@ pub fn tail_lines(path: &Path, n: usize) -> ForgeResult<TailResult> {
 ///
 /// Factored out of the platform layer so it can be unit-tested without
 /// touching the real filesystem.
+#[cfg(test)]
 pub fn select_first_existing(candidates: &[&str]) -> Option<(std::path::PathBuf, String)> {
     let path_env = std::env::var("PATH").unwrap_or_default();
     select_first_existing_in_path(candidates, &path_env)
 }
 
+#[cfg(test)]
 fn select_first_existing_in_path(
     candidates: &[&str],
     path_env: &str,

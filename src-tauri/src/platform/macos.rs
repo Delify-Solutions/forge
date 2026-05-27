@@ -308,13 +308,76 @@ pub fn reveal_path(path: &Path) -> ForgeResult<()> {
 /// Detect the first available editor binary from a hard-coded candidate list.
 /// Returns `(binary_path, display_name)` — display_name is the candidate
 /// string (e.g. "code", "cursor", "subl").
+///
+/// We augment `$PATH` with common install locations because Tauri app bundles
+/// inherit the launchd `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`), which omits
+/// Homebrew prefixes and per-user bins where editor CLIs typically live.
 pub fn detect_editor() -> Option<(PathBuf, &'static str)> {
-    let (path, name) = crate::domain::logs::select_first_existing(EDITOR_CANDIDATES)?;
-    let display_name = EDITOR_CANDIDATES
-        .iter()
-        .copied()
-        .find(|candidate| *candidate == name)?;
-    Some((path, display_name))
+    let path_env = augmented_path();
+    for &name in EDITOR_CANDIDATES {
+        for dir in path_env.split(':').filter(|d| !d.is_empty()) {
+            let candidate = PathBuf::from(dir).join(name);
+            if candidate.is_file() {
+                return Some((candidate, name));
+            }
+        }
+    }
+    None
+}
+
+fn augmented_path() -> String {
+    let mut parts: Vec<String> = std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    let extra: Vec<String> = {
+        let mut v = vec![
+            "/opt/homebrew/bin".to_string(),
+            "/usr/local/bin".to_string(),
+            "/opt/local/bin".to_string(),
+        ];
+        if let Ok(home) = std::env::var("HOME") {
+            v.push(format!("{home}/.local/bin"));
+            v.push(format!("{home}/bin"));
+        }
+        v
+    };
+    for dir in extra {
+        if !parts.iter().any(|p| p == &dir) {
+            parts.push(dir);
+        }
+    }
+    parts.join(":")
+}
+
+/// Map an editor candidate name to the macOS .app bundle name used by
+/// `/usr/bin/open -a`. This is the fallback when the CLI shim is not on PATH
+/// (e.g. user installed VS Code but never ran "Install 'code' command in PATH").
+fn editor_app_name(candidate: &str) -> Option<&'static str> {
+    match candidate {
+        "code" => Some("Visual Studio Code"),
+        "cursor" => Some("Cursor"),
+        "subl" => Some("Sublime Text"),
+        _ => None,
+    }
+}
+
+fn application_bundle_exists(app_name: &str) -> bool {
+    let user_apps = std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join("Applications").join(format!("{app_name}.app")));
+    let system_app = PathBuf::from(format!("/Applications/{app_name}.app"));
+    if system_app.is_dir() {
+        return true;
+    }
+    if let Some(p) = user_apps {
+        if p.is_dir() {
+            return true;
+        }
+    }
+    false
 }
 
 /// Open `path` in the detected editor. If no editor is found, returns a typed
@@ -324,14 +387,30 @@ pub fn detect_mkcert() -> Option<DetectedBinary> {
 }
 
 pub fn open_in_editor(path: &Path) -> ForgeResult<()> {
-    let Some((binary, _name)) = detect_editor() else {
-        return Err(ForgeError::Other(
-            "No editor found. Install VS Code (`code`), Cursor, or Sublime (`subl`).".into(),
-        ));
-    };
-    let _child = Command::new(&binary)
-        .arg(path)
-        .spawn()
-        .map_err(|e| ForgeError::Other(format!("open_in_editor failed: {e}")))?;
-    Ok(())
+    if let Some((binary, _name)) = detect_editor() {
+        let _child = Command::new(&binary)
+            .arg(path)
+            .spawn()
+            .map_err(|e| ForgeError::Other(format!("open_in_editor failed: {e}")))?;
+        return Ok(());
+    }
+
+    for &name in EDITOR_CANDIDATES {
+        let Some(app_name) = editor_app_name(name) else {
+            continue;
+        };
+        if application_bundle_exists(app_name) {
+            let _child = Command::new("/usr/bin/open")
+                .arg("-a")
+                .arg(app_name)
+                .arg(path)
+                .spawn()
+                .map_err(|e| ForgeError::Other(format!("open_in_editor failed: {e}")))?;
+            return Ok(());
+        }
+    }
+
+    Err(ForgeError::Other(
+        "No editor found. Install VS Code (`code`), Cursor, or Sublime (`subl`).".into(),
+    ))
 }
