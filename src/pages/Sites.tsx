@@ -312,8 +312,8 @@ function SiteTable({
                     <span className="text-foreground">{actionError}</span>
                 </div>
             )}
-            <div className="overflow-hidden rounded-lg border border-border bg-card">
-                <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border border-border bg-card">
+                <table className="w-full min-w-[860px] text-sm">
                     <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
                         <tr>
                             <th className="px-4 py-2 text-left font-medium">
@@ -369,7 +369,10 @@ function SiteTable({
                                         </span>
                                     </button>
                                 </td>
-                                <td className="px-4 py-2.5 text-muted-foreground">
+                                <td
+                                    className="max-w-[260px] truncate px-4 py-2.5 text-muted-foreground"
+                                    title={site.path}
+                                >
                                     {site.path}
                                 </td>
                                 <td className="px-4 py-2.5 text-muted-foreground">
@@ -432,7 +435,7 @@ function SiteTable({
                                         onError={(msg) => setActionError(msg)}
                                     />
                                 </td>
-                                <td className="px-4 py-2.5 text-right">
+                                <td className="whitespace-nowrap px-4 py-2.5 text-right">
                                     <div className="inline-flex items-center justify-end gap-1">
                                         <IconActionButton
                                             label={t('sites.actionOpen')}
