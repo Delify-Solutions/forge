@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [0.0.5-mvp] — 2026-05-28
+
 ### Added
 - Per-site Apache backend: sites can pick `web_server=apache`. Nginx terminates every request at port 80/443 and proxies to Apache at `127.0.0.1:8288`. Apache shares the existing PHP-FPM Unix socket for PHP execution via `mod_proxy_fcgi`.
 - Lazy install of the Apache 2.4.62 bundle: triggered only when the user first picks `engine=apache` in the Sites table engine select. Reuses the existing `installBundle` channel pattern.
