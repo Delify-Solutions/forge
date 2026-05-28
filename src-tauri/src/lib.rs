@@ -18,7 +18,9 @@ fn cleanup_orphans_from_previous_session() {
     use crate::domain::process::kill_orphan_pidfile;
     kill_orphan_pidfile(&crate::domain::dns::pid_path());
     kill_orphan_pidfile(&crate::domain::nginx::pid_path());
+    kill_orphan_pidfile(&crate::domain::apache::pid_path());
     crate::platform::macos::kill_listeners_on_port(80, &["nginx"]);
+    crate::platform::macos::kill_listeners_on_port(8288, &["httpd"]);
 }
 
 pub struct AppState {
@@ -89,6 +91,9 @@ pub fn run() {
             commands::wizard::stop_php_fpm,
             commands::wizard::services_status,
             commands::wizard::debug_reset_environment,
+            commands::wizard::start_apache,
+            commands::wizard::stop_apache,
+            commands::wizard::reload_apache,
             commands::system::open_devtools,
             commands::bundles::list_bundles,
             commands::bundles::install_bundle,

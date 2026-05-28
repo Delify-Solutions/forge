@@ -128,12 +128,32 @@ fn prepare_folder(path: &Path) -> ForgeResult<ScaffoldOutcome> {
 /// 120 s hard timeout. Captures stderr and surfaces it on failure.
 fn run_composer_create_project(path: &Path, outcome: &ScaffoldOutcome) -> ForgeResult<()> {
     let composer_path = find_composer().ok_or_else(|| {
-        ForgeError::Other("composer is not installed. Run: brew install composer".into())
+        ForgeError::Other(
+            "composer is not installed. Install it from the Add Site dialog or run: brew install composer".into(),
+        )
     })?;
 
     let path_str = path.to_string_lossy().to_string();
 
-    let mut child = Command::new(&composer_path)
+    let (program, prefix_args): (PathBuf, Vec<String>) = if is_phar(&composer_path) {
+        // The bundled composer is a PHAR with a `#!/usr/bin/env php` shebang
+        // that fails when no system php is on PATH. Drive it via the bundled
+        // PHP CLI so the scaffolder works on a stock macOS install.
+        let php = find_bundled_php().ok_or_else(|| {
+            ForgeError::Other(
+                "PHP is required to run composer. Install a PHP version from the wizard.".into(),
+            )
+        })?;
+        (php, vec![composer_path.to_string_lossy().to_string()])
+    } else {
+        (composer_path, Vec::new())
+    };
+
+    let mut cmd = Command::new(&program);
+    for arg in &prefix_args {
+        cmd.arg(arg);
+    }
+    let mut child = cmd
         .args([
             "create-project",
             "laravel/laravel",
@@ -188,6 +208,28 @@ fn run_composer_create_project(path: &Path, outcome: &ScaffoldOutcome) -> ForgeR
 /// Locate the `composer` binary using the platform detection helper.
 fn find_composer() -> Option<PathBuf> {
     crate::platform::macos::detect_composer().map(|b| b.binary)
+}
+
+/// Locate a PHP CLI to drive the composer PHAR. Falls back through the
+/// same bundle-first resolution `detect_binary` uses.
+fn find_bundled_php() -> Option<PathBuf> {
+    crate::platform::macos::detect_binary("php", &["--version"]).map(|b| b.binary)
+}
+
+/// Heuristic: a PHAR begins with `#!/usr/bin/env php` (or another php
+/// shebang) and isn't a Mach-O. We look at the first line — if it
+/// references php, treat it as a script that needs a php interpreter.
+fn is_phar(path: &Path) -> bool {
+    use std::io::{BufRead, BufReader};
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut reader = BufReader::new(file);
+    let mut first = String::new();
+    if reader.read_line(&mut first).is_err() {
+        return false;
+    }
+    first.starts_with("#!") && first.contains("php")
 }
 
 // ---------------------------------------------------------------------------

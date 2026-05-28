@@ -122,6 +122,12 @@
         "engineComingSoon": "(sắp có)",
         "engineNginx": "Nginx + PHP-FPM",
         "engineApache": "Apache",
+        "engineApacheInstallTitle": "Cài Apache 2.4.62",
+        "engineApacheInstallDescription": "Apache sẽ được tải về và cài đặt để dùng cho engine này.",
+        "engineApacheInstalling": "Đang cài Apache…",
+        "engineApacheNeedsInstall": "Cần Apache bundle cho site này",
+        "apacheStoppedBanner": "Apache đang tắt — {{count}} site Apache sẽ không tải.",
+        "apacheStartButton": "Khởi động Apache",
         "engineOls": "OpenLiteSpeed",
         "save": "Lưu",
         "cancel": "Huỷ",
@@ -174,8 +180,13 @@
         "templateStatic": "Static HTML",
         "templateLaravel": "Laravel",
         "composerRequired": "cần composer",
-        "composerMissingTitle": "composer chưa được cài đặt",
-        "composerMissingHint": "Cài đặt bằng: brew install composer",
+        "composerMissingTitle": "Composer chưa được cài đặt",
+        "composerMissingHint": "Cài Composer để scaffold dự án Laravel.",
+        "composerInstallButton": "Cài Composer",
+        "composerInstallTitle": "Cài Composer 2.9.8",
+        "composerInstallDescription": "Composer sẽ được tải về để chạy template Laravel.",
+        "composerInstalling": "Đang cài Composer…",
+        "composerNeedsInstall": "Cần Composer để dùng template Laravel.",
         "scaffoldingInProgress": "Đang tạo dự án…",
         "scaffoldFailed": "Tạo dự án thất bại."
     },
@@ -213,5 +224,8 @@
         "terminalKitty": "Kitty",
         "terminalWezterm": "WezTerm",
         "terminalGhostty": "Ghostty"
+    },
+    "services": {
+        "apache": "Apache"
     }
 }

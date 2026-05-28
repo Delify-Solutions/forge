@@ -122,6 +122,12 @@
         "engineComingSoon": "(coming soon)",
         "engineNginx": "Nginx + PHP-FPM",
         "engineApache": "Apache",
+        "engineApacheInstallTitle": "Install Apache 2.4.62",
+        "engineApacheInstallDescription": "Apache will be downloaded and installed to use this engine.",
+        "engineApacheInstalling": "Installing Apache…",
+        "engineApacheNeedsInstall": "Apache bundle is required for this site",
+        "apacheStoppedBanner": "Apache is stopped — {{count}} apache site(s) won't load.",
+        "apacheStartButton": "Start Apache",
         "engineOls": "OpenLiteSpeed",
         "save": "Save",
         "cancel": "Cancel",
@@ -174,8 +180,13 @@
         "templateStatic": "Static HTML",
         "templateLaravel": "Laravel",
         "composerRequired": "requires composer",
-        "composerMissingTitle": "composer is not installed",
-        "composerMissingHint": "Install it with: brew install composer",
+        "composerMissingTitle": "Composer is not installed",
+        "composerMissingHint": "Install Composer to scaffold a Laravel project.",
+        "composerInstallButton": "Install Composer",
+        "composerInstallTitle": "Install Composer 2.9.8",
+        "composerInstallDescription": "Composer will be downloaded so the Laravel template can run.",
+        "composerInstalling": "Installing Composer…",
+        "composerNeedsInstall": "Composer is required for the Laravel template.",
         "scaffoldingInProgress": "Scaffolding…",
         "scaffoldFailed": "Failed to scaffold project."
     },
@@ -213,5 +224,8 @@
         "terminalKitty": "Kitty",
         "terminalWezterm": "WezTerm",
         "terminalGhostty": "Ghostty"
+    },
+    "services": {
+        "apache": "Apache"
     }
 }

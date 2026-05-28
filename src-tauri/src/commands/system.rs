@@ -44,6 +44,7 @@ pub struct SystemReport {
     pub homebrew: HomebrewStatus,
     pub dnsmasq: EngineStatus,
     pub nginx: EngineStatus,
+    pub apache: EngineStatus,
     pub php: EngineStatus,
     pub php_fpm: EngineStatus,
     pub dns_port: u16,
@@ -79,6 +80,7 @@ pub async fn scan_system(state: State<'_, AppState>) -> ForgeResult<SystemReport
     for pidfile in [
         crate::domain::dns::pid_path(),
         crate::domain::nginx::pid_path(),
+        crate::domain::apache::pid_path(),
     ] {
         if let Ok(content) = std::fs::read_to_string(&pidfile) {
             if let Ok(pid) = content.trim().parse::<u32>() {
@@ -101,10 +103,30 @@ pub async fn scan_system(state: State<'_, AppState>) -> ForgeResult<SystemReport
 
         let dnsmasq = engine(plat::detect_binary("dnsmasq", &["--version"]));
         let nginx = engine(plat::detect_binary("nginx", &["-v"]));
+        let apache = {
+            // Prefer the installed bundle; fall back to system httpd.
+            let bundle_entry =
+                crate::domain::bundle::find_entry("apache", None).filter(|e| e.installed);
+            if let Some(entry) = bundle_entry {
+                let binary = crate::domain::bundle::bundle_dir("apache", &entry.version)
+                    .join("sbin")
+                    .join("httpd");
+                EngineStatus {
+                    found: binary.exists(),
+                    binary: binary
+                        .exists()
+                        .then(|| binary.to_string_lossy().to_string()),
+                    version: Some(entry.version),
+                    source: Some("forge".to_string()),
+                }
+            } else {
+                engine(plat::detect_binary("httpd", &["-v"]))
+            }
+        };
         let php = engine(plat::detect_binary("php", &["--version"]));
         let php_fpm = engine(plat::detect_binary("php-fpm", &["--version"]));
 
-        let ports = [80u16, dns_port]
+        let ports = [80u16, 8288u16, dns_port]
             .into_iter()
             .map(|port| {
                 let in_use = plat::port_in_use(port);
@@ -140,6 +162,7 @@ pub async fn scan_system(state: State<'_, AppState>) -> ForgeResult<SystemReport
             homebrew,
             dnsmasq,
             nginx,
+            apache,
             php,
             php_fpm,
             dns_port,

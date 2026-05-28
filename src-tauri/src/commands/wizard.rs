@@ -2,6 +2,7 @@
 
 use tauri::State;
 
+use crate::domain::apache;
 use crate::domain::dns;
 use crate::domain::nginx;
 use crate::domain::php;
@@ -90,6 +91,21 @@ pub async fn start_php_fpm(state: State<'_, AppState>) -> ForgeResult<u32> {
 #[tauri::command]
 pub async fn stop_php_fpm(state: State<'_, AppState>) -> ForgeResult<()> {
     php::stop(&state.supervisor).await
+}
+
+#[tauri::command]
+pub async fn start_apache(state: State<'_, AppState>) -> ForgeResult<u32> {
+    apache::start(&state.pool, &state.supervisor).await
+}
+
+#[tauri::command]
+pub async fn stop_apache(state: State<'_, AppState>) -> ForgeResult<()> {
+    apache::stop(&state.supervisor).await
+}
+
+#[tauri::command]
+pub async fn reload_apache(state: State<'_, AppState>) -> ForgeResult<()> {
+    apache::reload(&state.pool).await
 }
 
 #[tauri::command]

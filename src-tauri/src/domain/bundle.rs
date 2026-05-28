@@ -113,10 +113,22 @@ pub fn catalog() -> Vec<BundleEntry> {
     // via `php_fpm_subpath_for`.
     let entries: &[(&str, &str, &str, &str, Option<&str>)] = &[
         ("apache", "2.4.62", "Apache 2.4.62", "sbin/httpd", {
-            // Published 2026-05-24 from forge-engines tag apache-2.4.62.
+            // Re-published 2026-05-28 after the APR dylib bundling +
+            // install-name rewrite landed in the build script. The 2026-05-24
+            // tarball shipped without lib/ and dyld failed to load.
             match arch {
                 "darwin-arm64" => {
-                    Some("6d30bcd133b56f70895ffe19cdade148a8f8b17040f2fd5253c13cbd84abf6d5")
+                    Some("a8f47615b4f550050fcc5f75b1d5cbe24bfb786358ca5765a287a5ccb39912ff")
+                }
+                _ => None,
+            }
+        }),
+        ("composer", "2.9.8", "Composer 2.9.8", "bin/composer", {
+            // PHAR is arch-independent but the release matrix publishes one
+            // archive per arch — both share identical bytes.
+            match arch {
+                "darwin-arm64" => {
+                    Some("e860f050c422be62b1864537fee7778a1cdaf837f70af0e39efe8e3607e94cef")
                 }
                 _ => None,
             }
@@ -432,6 +444,7 @@ mod tests {
     fn catalog_has_known_engines() {
         let cat = catalog();
         assert!(cat.iter().any(|e| e.engine == "apache"));
+        assert!(cat.iter().any(|e| e.engine == "composer"));
         assert!(cat.iter().any(|e| e.engine == "dnsmasq"));
         assert!(cat.iter().any(|e| e.engine == "nginx"));
         assert!(!cat.iter().any(|e| e.engine == "openlitespeed"));

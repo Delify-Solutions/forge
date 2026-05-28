@@ -71,7 +71,7 @@ fn site_config_path(name: &str) -> PathBuf {
     sites_dir().join(format!("{name}.conf"))
 }
 
-fn php_socket_for(php_version: &str) -> PathBuf {
+pub(crate) fn php_socket_for(php_version: &str) -> PathBuf {
     let lines = crate::domain::php::installed_lines();
 
     // Determine which line to use.

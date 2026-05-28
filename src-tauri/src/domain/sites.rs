@@ -55,6 +55,18 @@ fn validate_web_server(value: &str) -> ForgeResult<()> {
     }
 }
 
+fn validate_apache_bundle_installed() -> ForgeResult<()> {
+    let installed = crate::domain::bundle::find_entry("apache", None)
+        .filter(|e| e.installed)
+        .is_some();
+    if !installed {
+        return Err(ForgeError::Other(
+            "apache bundle not installed — install it first via the Sites add dialog".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub async fn list(pool: &SqlitePool) -> ForgeResult<Vec<Site>> {
     let rows = sqlx::query_as::<_, (i64, String, String, String, String, bool, String)>(
         "SELECT id, name, path, php_version, web_server, https_enabled, created_at FROM sites ORDER BY created_at DESC, id DESC",
@@ -85,6 +97,9 @@ pub async fn add(pool: &SqlitePool, req: AddSiteRequest) -> ForgeResult<Site> {
     validate_name(&req.name)?;
     let web_server = req.web_server.as_deref().unwrap_or("nginx");
     validate_web_server(web_server)?;
+    if web_server == "apache" {
+        validate_apache_bundle_installed()?;
+    }
     let path = std::path::Path::new(&req.path);
     if !path.exists() {
         return Err(ForgeError::Other(format!(
@@ -210,6 +225,9 @@ pub async fn update_php_version(
 
 pub async fn update_web_server(pool: &SqlitePool, id: i64, web_server: &str) -> ForgeResult<Site> {
     validate_web_server(web_server)?;
+    if web_server == "apache" {
+        validate_apache_bundle_installed()?;
+    }
 
     let result = sqlx::query("UPDATE sites SET web_server = ? WHERE id = ?")
         .bind(web_server)
@@ -468,6 +486,111 @@ mod tests {
         assert!(validate_web_server("iis").is_err());
         assert!(validate_web_server("Nginx").is_err());
         assert!(validate_web_server("ngnix").is_err());
+    }
+
+    #[test]
+    fn apache_bundle_validation_fails_when_not_installed() {
+        // Host-dependent: relies on the apache bundle being absent from the
+        // dev machine's data dir. Skip when it's present so a local install
+        // for manual UI testing doesn't fail the suite.
+        if crate::domain::bundle::find_entry("apache", None)
+            .map(|e| e.installed)
+            .unwrap_or(false)
+        {
+            eprintln!("skipping: apache bundle is installed locally");
+            return;
+        }
+        let result = validate_apache_bundle_installed();
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("apache bundle not installed"),
+            "error message should contain 'apache bundle not installed', got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn add_site_rejects_apache_when_bundle_missing() {
+        if crate::domain::bundle::find_entry("apache", None)
+            .map(|e| e.installed)
+            .unwrap_or(false)
+        {
+            eprintln!("skipping: apache bundle is installed locally");
+            return;
+        }
+        let pool = make_test_pool().await;
+        let tmp = std::env::temp_dir().join(format!(
+            "forge-apache-add-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let result = add(
+            &pool,
+            AddSiteRequest {
+                name: "apachesite".into(),
+                path: tmp.to_string_lossy().to_string(),
+                php_version: Some("8.3".into()),
+                web_server: Some("apache".into()),
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("apache bundle not installed"),
+            "expected 'apache bundle not installed' in error, got: {msg}"
+        );
+
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[tokio::test]
+    async fn update_web_server_rejects_apache_when_bundle_missing() {
+        if crate::domain::bundle::find_entry("apache", None)
+            .map(|e| e.installed)
+            .unwrap_or(false)
+        {
+            eprintln!("skipping: apache bundle is installed locally");
+            return;
+        }
+        let pool = make_test_pool().await;
+        let tmp = std::env::temp_dir().join(format!(
+            "forge-apache-update-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        // First add a nginx site (should succeed).
+        let site = add(
+            &pool,
+            AddSiteRequest {
+                name: "nginxsite".into(),
+                path: tmp.to_string_lossy().to_string(),
+                php_version: Some("8.3".into()),
+                web_server: Some("nginx".into()),
+            },
+        )
+        .await
+        .expect("add nginx site");
+
+        // Now try to switch to apache — should fail.
+        let result = update_web_server(&pool, site.id, "apache").await;
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("apache bundle not installed"),
+            "expected 'apache bundle not installed' in error, got: {msg}"
+        );
+
+        std::fs::remove_dir_all(tmp).ok();
     }
 
     fn sample_site() -> Site {

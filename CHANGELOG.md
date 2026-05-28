@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+- Per-site Apache backend: sites can pick `web_server=apache`. Nginx terminates every request at port 80/443 and proxies to Apache at `127.0.0.1:8288`. Apache shares the existing PHP-FPM Unix socket for PHP execution via `mod_proxy_fcgi`.
+- Lazy install of the Apache 2.4.62 bundle: triggered only when the user first picks `engine=apache` in the Sites table engine select. Reuses the existing `installBundle` channel pattern.
+- Services page Apache row with Start / Stop / state / PID display, mirroring the Nginx and PHP-FPM rows. When the Apache bundle is not yet installed, the row offers an inline **Install** button instead of Start so the action can never fail with a missing-bundle error.
+- Sites page warning banner: when Apache is stopped and one or more sites use Apache, an amber banner with a one-click Start button surfaces the dependency.
+- New Tera templates `httpd.conf.tera` (master config) and `apache.vhost.conf.tera` (per-site vhost), with `mod_proxy_fcgi` routing PHP requests via `<FilesMatch \.php$> SetHandler "proxy:unix:..."`.
+- Composer 2.9.8 bundle: the Laravel template no longer requires `brew install composer`. The Add Site dialog detects the bundle, falls back to PATH, and offers an in-app install when missing. Scaffolder runs the PHAR via the bundled PHP CLI so it works on a stock macOS install.
+
+### Changed
+- CLAUDE.md decision 5 updated to describe the realised Mode B architecture: Nginx is always the gateway from V0.3 onward; Apache binds at `127.0.0.1:8288`; OLS remains deferred to V0.4+.
+
+### Fixed
+- Services page error banner now surfaces the actual backend message (e.g. "apache bundle not installed") instead of a generic "Operation failed". Tauri rejects with a raw string rather than an `Error` instance, so the UI now handles both shapes.
+
 ## [0.0.4-mvp] — 2026-05-28
 
 ### Added

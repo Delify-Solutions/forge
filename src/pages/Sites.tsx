@@ -15,9 +15,11 @@ import {
     Link2,
     X,
     RefreshCw,
+    Play,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/PageHeader';
+import { ApacheInstallDialog } from '@/components/ApacheInstallDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -29,7 +31,15 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { tauri } from '@/lib/tauri';
-import type { ComposerStatus, MkcertStatus, ProjectTemplate, Site, SiteLogsTail, WebServer } from '@/types';
+import type {
+    BundleEntry,
+    ComposerStatus,
+    MkcertStatus,
+    ProjectTemplate,
+    Site,
+    SiteLogsTail,
+    WebServer,
+} from '@/types';
 
 export function Sites() {
     const { t } = useTranslation();
@@ -41,6 +51,9 @@ export function Sites() {
     const [mkcertStatus, setMkcertStatus] = useState<MkcertStatus | null>(null);
     const [caInstalling, setCaInstalling] = useState(false);
     const [caInstallError, setCaInstallError] = useState<string | null>(null);
+    const [apacheState, setApacheState] = useState<'stopped' | 'running' | 'crashed'>('stopped');
+    const [bundles, setBundles] = useState<BundleEntry[]>([]);
+    const [apacheStarting, setApacheStarting] = useState(false);
 
     const normalizedSearch = searchQuery.trim().toLowerCase();
     const filteredSites = normalizedSearch
@@ -55,12 +68,14 @@ export function Sites() {
         setLoading(true);
         setError(null);
         try {
-            const [siteList, status] = await Promise.all([
+            const [siteList, status, bundleList] = await Promise.all([
                 tauri.listSites(),
                 tauri.mkcertStatus(),
+                tauri.listBundles(),
             ]);
             setSites(siteList);
             setMkcertStatus(status);
+            setBundles(bundleList);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load.');
         } finally {
@@ -70,6 +85,22 @@ export function Sites() {
 
     useEffect(() => {
         void refresh();
+    }, []);
+
+    // Poll services_status every 2 seconds to track apache state.
+    useEffect(() => {
+        const poll = async () => {
+            try {
+                const statuses = await tauri.servicesStatus();
+                const apacheSvc = statuses.find((s) => s.name === 'apache');
+                setApacheState(apacheSvc?.state ?? 'stopped');
+            } catch {
+                // ignore poll errors
+            }
+        };
+        void poll();
+        const id = window.setInterval(() => void poll(), 2000);
+        return () => window.clearInterval(id);
     }, []);
 
     const onRemove = async (id: number) => {
@@ -95,6 +126,23 @@ export function Sites() {
             setCaInstalling(false);
         }
     };
+
+    const handleStartApache = async () => {
+        setApacheStarting(true);
+        try {
+            await tauri.startApache();
+            const statuses = await tauri.servicesStatus();
+            const apacheSvc = statuses.find((s) => s.name === 'apache');
+            setApacheState(apacheSvc?.state ?? 'stopped');
+        } catch {
+            // ignore — user can retry from Services page
+        } finally {
+            setApacheStarting(false);
+        }
+    };
+
+    const apacheSiteCount = sites.filter((s) => s.webServer === 'apache').length;
+    const showApacheBanner = apacheState !== 'running' && apacheSiteCount > 0;
 
     return (
         <div>
@@ -180,6 +228,31 @@ export function Sites() {
                 </div>
             )}
 
+            {showApacheBanner && (
+                <div
+                    className="mb-4 flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm"
+                    role="status"
+                >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-500" />
+                    <span className="flex-1 text-foreground">
+                        {t('sites.apacheStoppedBanner', { count: apacheSiteCount })}
+                    </span>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleStartApache}
+                        disabled={apacheStarting}
+                    >
+                        {apacheStarting ? (
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                            <Play className="mr-1 h-3 w-3" />
+                        )}
+                        {t('sites.apacheStartButton')}
+                    </Button>
+                </div>
+            )}
+
             {error && (
                 <div className="mb-4 flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm">
                     <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
@@ -204,6 +277,7 @@ export function Sites() {
                     onRemove={onRemove}
                     onRefresh={refresh}
                     mkcertStatus={mkcertStatus}
+                    bundles={bundles}
                 />
             )}
 
@@ -211,6 +285,7 @@ export function Sites() {
                 open={dialogOpen}
                 onOpenChange={setDialogOpen}
                 onAdded={refresh}
+                bundles={bundles}
             />
         </div>
     );
@@ -238,17 +313,20 @@ function SiteTable({
     onRemove,
     onRefresh,
     mkcertStatus,
+    bundles,
 }: {
     sites: Site[];
     onRemove: (id: number) => void;
     onRefresh: () => void;
     mkcertStatus: MkcertStatus | null;
+    bundles: BundleEntry[];
 }) {
     const { t } = useTranslation();
     const [phpLines, setPhpLines] = useState<string[]>([]);
     const [aliasSite, setAliasSite] = useState<Site | null>(null);
     const [logsSite, setLogsSite] = useState<Site | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
+    const [apacheInstallSiteId, setApacheInstallSiteId] = useState<number | null>(null);
 
     useEffect(() => {
         tauri.scanSystem().then((r) => setPhpLines(r.installedPhpLines ?? []));
@@ -280,6 +358,13 @@ function SiteTable({
     };
 
     const handleEngineChange = async (siteId: number, newEngine: string) => {
+        if (newEngine === 'apache') {
+            const apacheBundle = bundles.find((b) => b.engine === 'apache');
+            if (!apacheBundle?.installed) {
+                setApacheInstallSiteId(siteId);
+                return;
+            }
+        }
         try {
             await tauri.updateSiteWebServer(siteId, newEngine);
             onRefresh();
@@ -412,9 +497,8 @@ function SiteTable({
                                         <option value="nginx">
                                             {t('sites.engineNginx')}
                                         </option>
-                                        <option value="apache" disabled>
-                                            {t('sites.engineApache')}{' '}
-                                            {t('sites.engineComingSoon')}
+                                        <option value="apache">
+                                            {t('sites.engineApache')}
                                         </option>
                                         <option value="openlitespeed" disabled>
                                             {t('sites.engineOls')}{' '}
@@ -502,6 +586,21 @@ function SiteTable({
                     onChanged={onRefresh}
                 />
                 <LogsDialog site={logsSite} onClose={() => setLogsSite(null)} />
+                <ApacheInstallDialog
+                    open={apacheInstallSiteId !== null}
+                    onClose={() => setApacheInstallSiteId(null)}
+                    onInstalled={async () => {
+                        setApacheInstallSiteId(null);
+                        if (apacheInstallSiteId !== null) {
+                            try {
+                                await tauri.updateSiteWebServer(apacheInstallSiteId, 'apache');
+                                onRefresh();
+                            } catch {
+                                // silently fail — row will keep old value
+                            }
+                        }
+                    }}
+                />
             </div>
         </div>
     );
@@ -785,10 +884,12 @@ function AddSiteDialog({
     open,
     onOpenChange,
     onAdded,
+    bundles,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onAdded: () => void;
+    bundles: BundleEntry[];
 }) {
     const { t } = useTranslation();
     const [name, setName] = useState('');
@@ -800,6 +901,8 @@ function AddSiteDialog({
     const [composerStatus, setComposerStatus] = useState<ComposerStatus | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [err, setErr] = useState<string | null>(null);
+    const [apacheInstallOpen, setApacheInstallOpen] = useState(false);
+    const [composerInstallOpen, setComposerInstallOpen] = useState(false);
 
     useEffect(() => {
         if (open) {
@@ -875,6 +978,7 @@ function AddSiteDialog({
     const composerMissing = composerStatus !== null && !composerStatus.found;
 
     return (
+        <>
         <Dialog
             open={open}
             onOpenChange={(o) => {
@@ -892,9 +996,18 @@ function AddSiteDialog({
 
                 <div className="space-y-3">
                     {composerMissing && (
-                        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                            <p className="font-medium">{t('sites.composerMissingTitle')}</p>
-                            <p className="mt-0.5 text-muted-foreground">{t('sites.composerMissingHint')}</p>
+                        <div className="flex items-start justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+                            <div>
+                                <p className="font-medium">{t('sites.composerMissingTitle')}</p>
+                                <p className="mt-0.5 text-muted-foreground">{t('sites.composerMissingHint')}</p>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setComposerInstallOpen(true)}
+                            >
+                                {t('sites.composerInstallButton')}
+                            </Button>
                         </div>
                     )}
 
@@ -992,17 +1105,24 @@ function AddSiteDialog({
                         </label>
                         <select
                             value={webServer}
-                            onChange={(e) =>
-                                setWebServer(e.target.value as WebServer)
-                            }
+                            onChange={(e) => {
+                                const val = e.target.value as WebServer;
+                                if (val === 'apache') {
+                                    const apacheBundle = bundles.find((b) => b.engine === 'apache');
+                                    if (!apacheBundle?.installed) {
+                                        setApacheInstallOpen(true);
+                                        return;
+                                    }
+                                }
+                                setWebServer(val);
+                            }}
                             className="h-9 w-full rounded-md border border-input bg-muted/50 px-3 text-sm"
                         >
                             <option value="nginx">
                                 {t('sites.engineNginx')}
                             </option>
-                            <option value="apache" disabled>
-                                {t('sites.engineApache')}{' '}
-                                {t('sites.engineComingSoon')}
+                            <option value="apache">
+                                {t('sites.engineApache')}
                             </option>
                             <option value="openlitespeed" disabled>
                                 {t('sites.engineOls')}{' '}
@@ -1033,6 +1153,24 @@ function AddSiteDialog({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        <ApacheInstallDialog
+            open={apacheInstallOpen}
+            onClose={() => setApacheInstallOpen(false)}
+            onInstalled={async () => {
+                setApacheInstallOpen(false);
+                setWebServer('apache');
+            }}
+        />
+        <ComposerInstallDialog
+            open={composerInstallOpen}
+            onClose={() => setComposerInstallOpen(false)}
+            onInstalled={async () => {
+                setComposerInstallOpen(false);
+                const status = await tauri.composerStatus();
+                setComposerStatus(status);
+            }}
+        />
+        </>
     );
 }
 
@@ -1174,6 +1312,96 @@ function AliasDialog({
                 <DialogFooter>
                     <Button variant="ghost" onClick={onClose}>
                         {t('sites.aliasClose')}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function ComposerInstallDialog({
+    open,
+    onClose,
+    onInstalled,
+}: {
+    open: boolean;
+    onClose: () => void;
+    onInstalled: () => Promise<void>;
+}) {
+    const { t } = useTranslation();
+    const [progress, setProgress] = useState<string | null>(null);
+    const [err, setErr] = useState<string | null>(null);
+    const [installing, setInstalling] = useState(false);
+
+    const startInstall = async () => {
+        setInstalling(true);
+        setErr(null);
+        setProgress(t('sites.composerInstalling'));
+        try {
+            await tauri.installBundle('composer', null, (p) => {
+                if (p.kind === 'downloading') {
+                    const pct =
+                        p.total && p.total > 0
+                            ? Math.round((p.downloaded / p.total) * 100)
+                            : null;
+                    setProgress(pct !== null ? `Downloading ${pct}%` : 'Downloading…');
+                } else if (p.kind === 'verifying') {
+                    setProgress('Verifying checksum…');
+                } else if (p.kind === 'extracting') {
+                    setProgress('Extracting…');
+                } else if (p.kind === 'started') {
+                    setProgress(t('sites.composerInstalling'));
+                }
+            });
+            setProgress(null);
+            await onInstalled();
+        } catch (e) {
+            setErr(e instanceof Error ? e.message : 'Install failed.');
+            setInstalling(false);
+        }
+    };
+
+    const handleOpenChange = (o: boolean) => {
+        if (!o && !installing) onClose();
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>{t('sites.composerInstallTitle')}</DialogTitle>
+                    <DialogDescription>
+                        {t('sites.composerInstallDescription')}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                    {progress && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            {progress}
+                        </div>
+                    )}
+                    {err && (
+                        <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm">
+                            <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+                            <span className="text-foreground">{err}</span>
+                        </div>
+                    )}
+                    {!installing && !err && (
+                        <p className="text-sm text-muted-foreground">
+                            {t('sites.composerNeedsInstall')}
+                        </p>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button variant="ghost" onClick={onClose} disabled={installing}>
+                        {t('sites.cancel')}
+                    </Button>
+                    <Button onClick={startInstall} disabled={installing}>
+                        {installing && <Loader2 className="animate-spin" />}
+                        {installing ? progress ?? t('sites.composerInstalling') : t('common.install')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

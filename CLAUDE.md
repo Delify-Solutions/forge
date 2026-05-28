@@ -72,10 +72,11 @@ macOS's per-TLD resolver mechanism makes this work without touching system DNS s
 
 ### 5. Web server strategy: aaPanel-inspired but cleaner
 
-Two operating modes:
+Mode B is the engine routing model from V0.3 onward:
 
-- **Mode A (default, MVP–V0.3):** one web server is active at port 80/443 at any time. Switching servers means stopping the old one, starting the new one, and regenerating configs.
-- **Mode B (V0.4+):** Nginx is always the gateway at 80/443. Apache binds to `127.0.0.1:8288`, OLS to `127.0.0.1:8188`. Per-site engine selection routes through Nginx upstream config.
+- **Nginx** is always the gateway at port 80/443. It terminates every request and proxies to the appropriate backend.
+- **Apache** binds plain HTTP at `127.0.0.1:8288`. Per-site engine selection routes through Nginx upstream config — a site with `web_server=apache` gets an Nginx `proxy_pass http://127.0.0.1:8288` block.
+- **OpenLiteSpeed** is still deferred to V0.4+ pending the macOS build issue documented in `domain/bundle.rs:151`.
 
 PHP-FPM is shared across all web servers — one pool per PHP version, exposed via Unix socket at `~/Library/Application Support/Forge/runtime/php/<version>.sock`.
 

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Play, RefreshCw, Square, Wand2 } from 'lucide-react';
+import { Download, Loader2, Play, RefreshCw, Square, Wand2 } from 'lucide-react';
 
+import { ApacheInstallDialog } from '@/components/ApacheInstallDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { tauri } from '@/lib/tauri';
-import type { ProcessStatus } from '@/types';
+import type { BundleEntry, ProcessStatus } from '@/types';
 
 const STATE_DOT: Record<ProcessStatus['state'], string> = {
     running: 'bg-emerald-500',
@@ -33,6 +34,12 @@ const SERVICES: ManagedService[] = [
         stop: () => tauri.stopNginx(),
     },
     {
+        name: 'apache',
+        label: 'Apache',
+        start: () => tauri.startApache(),
+        stop: () => tauri.stopApache(),
+    },
+    {
         name: 'php-fpm',
         label: 'PHP-FPM',
         start: () => tauri.startPhpFpm(),
@@ -44,21 +51,38 @@ interface ServicesProps {
     onOpenWizard: () => void;
 }
 
+function formatError(err: unknown, fallback: string): string {
+    if (err instanceof Error) return err.message;
+    if (typeof err === 'string' && err.length > 0) return err;
+    return fallback;
+}
+
 export function Services({ onOpenWizard }: ServicesProps) {
     const [statuses, setStatuses] = useState<ProcessStatus[]>([]);
     const [busy, setBusy] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [bundles, setBundles] = useState<BundleEntry[]>([]);
+    const [apacheInstallOpen, setApacheInstallOpen] = useState(false);
+
+    const refreshBundles = async () => {
+        try {
+            setBundles(await tauri.listBundles());
+        } catch {
+            // Bundle catalog is best-effort UI hint; ignore.
+        }
+    };
 
     const refresh = async () => {
         try {
             setStatuses(await tauri.servicesStatus());
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Refresh failed.');
+            setError(formatError(err, 'Refresh failed.'));
         }
     };
 
     useEffect(() => {
         void refresh();
+        void refreshBundles();
         const id = window.setInterval(() => {
             void refresh();
         }, 2000);
@@ -69,6 +93,9 @@ export function Services({ onOpenWizard }: ServicesProps) {
         statuses.find((s) => s.name === name)?.state ?? 'stopped';
     const pidOf = (name: string): number | undefined =>
         statuses.find((s) => s.name === name)?.pid;
+    const apacheInstalled = bundles.some(
+        (b) => b.engine === 'apache' && b.installed,
+    );
 
     const run = async (svc: ManagedService, action: 'start' | 'stop') => {
         setBusy(svc.name);
@@ -78,7 +105,7 @@ export function Services({ onOpenWizard }: ServicesProps) {
             else await svc.stop();
             await refresh();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Operation failed.');
+            setError(formatError(err, 'Operation failed.'));
         } finally {
             setBusy(null);
         }
@@ -152,7 +179,16 @@ export function Services({ onOpenWizard }: ServicesProps) {
                                         {pid ?? '—'}
                                     </td>
                                     <td className="px-4 py-2.5 text-right">
-                                        {state === 'running' ? (
+                                        {svc.name === 'apache' && !apacheInstalled ? (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => setApacheInstallOpen(true)}
+                                            >
+                                                <Download />
+                                                Install
+                                            </Button>
+                                        ) : state === 'running' ? (
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
@@ -189,6 +225,16 @@ export function Services({ onOpenWizard }: ServicesProps) {
                     </tbody>
                 </table>
             </div>
+
+            <ApacheInstallDialog
+                open={apacheInstallOpen}
+                onClose={() => setApacheInstallOpen(false)}
+                onInstalled={async () => {
+                    setApacheInstallOpen(false);
+                    await refreshBundles();
+                    await refresh();
+                }}
+            />
         </div>
     );
 }

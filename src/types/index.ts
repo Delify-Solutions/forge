@@ -23,6 +23,7 @@ export interface MkcertStatus {
 export interface ComposerStatus {
     found: boolean;
     version?: string;
+    source?: string;
 }
 
 export interface PortStatus {
@@ -43,6 +44,7 @@ export interface SystemReport {
     homebrew: { installed: boolean; prefix?: string };
     dnsmasq: EngineStatus;
     nginx: EngineStatus;
+    apache: EngineStatus;
     php: EngineStatus;
     phpFpm: EngineStatus;
     dnsPort: number;

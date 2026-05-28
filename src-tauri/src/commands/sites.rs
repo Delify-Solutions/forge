@@ -6,7 +6,7 @@ use tauri::State;
 use crate::domain::scaffold::{self, ProjectTemplate};
 use crate::domain::sites::{self, AddSiteRequest, Site};
 use crate::domain::tools::{self, MacosDetector, ToolKind};
-use crate::domain::{logs, nginx, process::ProcessSupervisor};
+use crate::domain::{apache, logs, nginx, process::ProcessSupervisor};
 use crate::error::{ForgeError, ForgeResult};
 use crate::AppState;
 
@@ -169,6 +169,7 @@ pub async fn tail_site_logs(state: State<'_, AppState>, id: i64) -> ForgeResult<
 pub struct ComposerStatus {
     pub found: bool,
     pub version: Option<String>,
+    pub source: Option<String>,
 }
 
 #[tauri::command]
@@ -177,10 +178,12 @@ pub fn composer_status() -> ComposerStatus {
         Some(binary) => ComposerStatus {
             found: true,
             version: binary.version,
+            source: Some(binary.source),
         },
         None => ComposerStatus {
             found: false,
             version: None,
+            source: None,
         },
     }
 }
@@ -226,10 +229,24 @@ pub async fn scaffold_and_add_site(
 }
 
 async fn try_reload(pool: &sqlx::SqlitePool, supervisor: &ProcessSupervisor) -> ForgeResult<()> {
-    let status = supervisor.status(nginx::NGINX_PROCESS).await;
-    if matches!(status.state, crate::domain::process::ProcessState::Running) {
-        nginx::reload(pool).await
+    let nginx_status = supervisor.status(nginx::NGINX_PROCESS).await;
+    if matches!(
+        nginx_status.state,
+        crate::domain::process::ProcessState::Running
+    ) {
+        nginx::reload(pool).await?;
     } else {
-        nginx::regenerate(pool).await
+        nginx::regenerate(pool).await?;
     }
+
+    apache::regenerate(pool).await?;
+    let apache_status = supervisor.status(apache::APACHE_PROCESS).await;
+    if matches!(
+        apache_status.state,
+        crate::domain::process::ProcessState::Running
+    ) {
+        apache::reload(pool).await?;
+    }
+
+    Ok(())
 }

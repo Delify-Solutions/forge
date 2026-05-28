@@ -424,6 +424,30 @@ pub fn detect_mkcert() -> Option<DetectedBinary> {
 }
 
 pub fn detect_composer() -> Option<DetectedBinary> {
+    // Prefer the Forge-managed bundle over brew/PATH so the Laravel
+    // scaffolder works without `brew install composer`. The PHAR's
+    // `#!/usr/bin/env php` shebang fails when no system php is present —
+    // scaffold.rs always invokes it as `<bundled-php> bin/composer ...`,
+    // so we skip the runtime version probe here and synthesise the version
+    // string from the catalog entry.
+    let entries = crate::domain::bundle::catalog();
+    let mut bundled: Vec<crate::domain::bundle::BundleEntry> = entries
+        .into_iter()
+        .filter(|e| e.engine == "composer" && e.installed)
+        .collect();
+    bundled.sort_by(|a, b| a.version.cmp(&b.version));
+    if let Some(entry) = bundled.into_iter().next_back() {
+        if let Some(path) =
+            crate::domain::bundle::installed_binary("composer", &entry.version, &entry.bin_subpath)
+        {
+            return Some(DetectedBinary {
+                binary: path,
+                version: Some(format!("Composer {}", entry.version)),
+                source: "forge".to_string(),
+            });
+        }
+    }
+
     detect_binary("composer", &["--version"])
 }
 
